@@ -1,0 +1,69 @@
+{
+  "project_info": {
+    "project_number": "1056319177244",
+    "firebase_url": "https://nursing-safety-app-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "nursing-safety-app",
+    "storage_bucket": "nursing-safety-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1056319177244:android:1eff0a069da8d24f5e55d9",
+        "android_client_info": {
+          "package_name": "com.nursing.collegesafety"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1056319177244-h59a428lk8uoi3s0hhki6hkhbo7n7o5v.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA_24lgrhLvJWwiWQATJSPkLNjE08aP0Ug"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1056319177244-h59a428lk8uoi3s0hhki6hkhbo7n7o5v.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1056319177244:android:110019b357024f165e55d9",
+        "android_client_info": {
+          "package_name": "com.nursing.nursingcollege"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1056319177244-h59a428lk8uoi3s0hhki6hkhbo7n7o5v.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA_24lgrhLvJWwiWQATJSPkLNjE08aP0Ug"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1056319177244-h59a428lk8uoi3s0hhki6hkhbo7n7o5v.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

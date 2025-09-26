@@ -1,0 +1,55 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.nursing.nursingcollege">
+
+    <!-- PERMISSIONS (must be direct children of <manifest>) -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Android 13+ runtime permission for notifications. Still declare it here. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- optional but useful for wakelock during urgent alerts -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+
+    <application
+        android:label="nursingcollege"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <!-- Splash / Normal theme metadata (Flutter) -->
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme"
+                />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <!-- Tell Firebase which notification channel ID to use by default -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="sos_high_priority_channel" />
+
+        <!-- KEEP Flutter plugin marker -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+
+    </application>
+
+    <!-- Required to query activities that can process text (Flutter plugin) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+    </queries>
+</manifest>
