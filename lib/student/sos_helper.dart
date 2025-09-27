@@ -1,7 +1,6 @@
 // lib/student/sos_helper.dart
 import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/firestore_service.dart';
 
 class SosHelper {

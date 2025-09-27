@@ -1,8 +1,8 @@
-// student/student_dashboard.dart
+// lib/student/student_dashboard.dart
+
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../common/side_menu.dart';
+import 'student_sos_screen.dart'; // <-- NEW
 
 class StudentDashboard extends StatelessWidget {
   final String username;
@@ -16,45 +16,32 @@ class StudentDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final complaints = [
-      "Harassment",
-      "Ragging",
-      "Patient Violence",
-      "Fighting in Parking",
-      "Student Needs Help",
-    ];
-
     return Scaffold(
       appBar: AppBar(title: const Text("Student Dashboard")),
       drawer: SideMenu(role: role, username: username),
-      body: ListView.builder(
-        itemCount: complaints.length,
-        itemBuilder: (context, index) {
-          return Card(
-            margin: const EdgeInsets.all(8),
-            child: ListTile(
-              title: Text(complaints[index]),
-              trailing: const Icon(Icons.report),
-              onTap: () async {
-                try {
-                  await FirebaseFirestore.instance.collection("complaints").add({
-                    "type": complaints[index],
-                    "userId": FirebaseAuth.instance.currentUser!.uid,
-                    "timestamp": FieldValue.serverTimestamp(),
-                    "status": "pending",
-                  });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("${complaints[index]} reported!")),
-                  );
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Failed to report: $e")),
-                  );
-                }
-              },
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.sos, size: 32),
+            label: const Text(
+              "EMERGENCY SOS",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
-          );
-        },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const StudentSosScreen()),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
