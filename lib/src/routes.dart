@@ -6,52 +6,52 @@ import '../student/student_dashboard.dart';
 import '../security/security_dashboard.dart';
 import '../admin/manage_users_screen.dart';
 import '../superadmin/superadmin_dashboard.dart';
+import '../landing_screen.dart';
+import '../models/user_role.dart'; // use the single UserRole enum
 
 class AppRoutes {
-  static const login = "/login";
-  static const register = "/register";
-  static const studentDashboard = "/student";
-  static const securityDashboard = "/security";
-  static const adminDashboard = "/admin";
-  static const superAdminDashboard = "/superadmin";
+  static const String landing = '/';
+  static const String login = '/login';
+  static const String register = '/register';
+  static const String student = '/student';
+  static const String security = '/security';
+  static const String admin = '/admin';
+  static const String superadmin = '/superadmin';
 
-  static Route<dynamic> generateRoute(RouteSettings settings) {
-    final args = settings.arguments as Map<String, dynamic>?;
-
-    final username = args?['username'] as String? ?? "User";
-    final role = args?['role'];
-
+  static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
+      case landing:
+        return MaterialPageRoute(builder: (_) => const LandingScreen());
       case login:
         return MaterialPageRoute(builder: (_) => const LoginScreen());
       case register:
         return MaterialPageRoute(builder: (_) => const RegisterScreen());
-      case studentDashboard:
+      case student:
         return MaterialPageRoute(
-          builder: (_) => StudentDashboard(
-            username: username,
-            role: role ?? UserRole.student,
+          builder: (_) => const StudentDashboard(
+            username: 'User',
+            role: UserRole.student,
           ),
         );
-      case securityDashboard:
+      case security:
         return MaterialPageRoute(
           builder: (_) => SecurityDashboard(
-            username: username,
-            role: role ?? UserRole.security,
+            username: 'User',
+            role: UserRole.security,
           ),
         );
-      case adminDashboard:
+      case admin:
         return MaterialPageRoute(
           builder: (_) => ManageUsersScreen(
-            username: username,
-            role: role ?? UserRole.admin,
+            username: 'User',
+            role: UserRole.admin,
           ),
         );
-      case superAdminDashboard:
+      case superadmin:
         return MaterialPageRoute(
-          builder: (_) => SuperAdminDashboard(
-            username: username,
-            role: role ?? UserRole.superadmin,
+          builder: (_) => const SuperAdminDashboard(
+            username: 'User',
+            role: UserRole.superadmin,
           ),
         );
       default:

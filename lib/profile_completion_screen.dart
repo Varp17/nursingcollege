@@ -1,9 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-
-import 'common/side_menu.dart';
 import 'student/student_dashboard.dart';
+import '../models/user_role.dart';
 
 class ProfileCompletionScreen extends StatefulWidget {
   const ProfileCompletionScreen({super.key});
@@ -38,10 +37,16 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
       final user = _auth.currentUser;
       if (user == null) return;
 
+      // Update Firebase Auth displayName for easier login display
+      await user.updateDisplayName(_nameController.text.trim());
+
+      // Update Firestore user document
       await _firestore.collection("users").doc(user.uid).update({
         "name": _nameController.text.trim(),
         "age": _ageController.text.trim(),
         "phone": _phoneController.text.trim(),
+        "approved": false, // default approval, admin will approve later
+        "role": "student", // default role
       });
 
       if (!mounted) return;
@@ -50,7 +55,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
         context,
         MaterialPageRoute(
           builder: (_) => StudentDashboard(
-            username: user.displayName ?? "Student",
+            username: _nameController.text.trim(),
             role: UserRole.student,
           ),
         ),
@@ -64,37 +69,121 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
     }
   }
 
+  @override
+  void initState() {
+    super.initState();
+
+    // Pre-fill name/email if user came from Google sign-in
+    final user = _auth.currentUser;
+    if (user != null) {
+      _nameController.text = user.displayName ?? "";
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Complete Your Profile")),
-      body: _isSaving
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(labelText: "Full Name"),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF6A11CB), Color(0xFF2575FC)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Card(
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24)),
+                elevation: 8,
+                shadowColor: Colors.black45,
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        "Complete Your Profile",
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineSmall
+                            ?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.deepPurple,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Name
+                      TextField(
+                        controller: _nameController,
+                        decoration: InputDecoration(
+                          labelText: "Full Name",
+                          prefixIcon: const Icon(Icons.person),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Age
+                      TextField(
+                        controller: _ageController,
+                        decoration: InputDecoration(
+                          labelText: "Age",
+                          prefixIcon: const Icon(Icons.cake),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Phone
+                      TextField(
+                        controller: _phoneController,
+                        decoration: InputDecoration(
+                          labelText: "Phone Number",
+                          prefixIcon: const Icon(Icons.phone),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                        keyboardType: TextInputType.phone,
+                      ),
+                      const SizedBox(height: 24),
+
+                      SizedBox(
+                        height: 50,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.deepPurple,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: _isSaving ? null : _saveProfile,
+                          child: _isSaving
+                              ? const CircularProgressIndicator(
+                            color: Colors.white,
+                          )
+                              : const Text(
+                            "Save & Continue",
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            TextField(
-              controller: _ageController,
-              decoration: const InputDecoration(labelText: "Age"),
-              keyboardType: TextInputType.number,
-            ),
-            TextField(
-              controller: _phoneController,
-              decoration: const InputDecoration(labelText: "Phone Number"),
-              keyboardType: TextInputType.phone,
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _saveProfile,
-              child: const Text("Save & Continue"),
-            ),
-          ],
+          ),
         ),
       ),
     );

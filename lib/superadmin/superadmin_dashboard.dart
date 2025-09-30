@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../common/side_menu.dart';
 import 'manage_users_screen.dart';
+import '../models/user_role.dart'; // use the single UserRole enum
 
 class SuperAdminDashboard extends StatelessWidget {
   final String username;

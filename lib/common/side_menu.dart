@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
+import '../models/user_role.dart';
 import '../admin/manage_users_screen.dart';
-
-enum UserRole { superadmin, admin, student, security }
+import '../superadmin/superadmin_dashboard.dart';
+import '../security/pending_sos_screen.dart'; // Import the Pending SOS screen
 
 class SideMenu extends StatelessWidget {
   final UserRole role;
@@ -13,7 +13,7 @@ class SideMenu extends StatelessWidget {
 
   void _signOut(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
-    Navigator.of(context).pushReplacementNamed('/login'); // Adjust login route
+    Navigator.of(context).pushReplacementNamed('/login');
   }
 
   List<Widget> _getMenuItems(BuildContext context) {
@@ -23,7 +23,15 @@ class SideMenu extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.dashboard),
             title: const Text('Dashboard'),
-            onTap: () => Navigator.pop(context),
+            onTap: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => SuperAdminDashboard(
+                  username: username,
+                  role: role,
+                ),
+              ),
+            ),
           ),
           ListTile(
             leading: const Icon(Icons.manage_accounts),
@@ -58,6 +66,18 @@ class SideMenu extends StatelessWidget {
             title: const Text('Student Records'),
             onTap: () => Navigator.pop(context),
           ),
+          ListTile(
+            leading: const Icon(Icons.warning),
+            title: const Text('Pending SOS Alerts'),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const PendingSOSScreen(),
+                ),
+              );
+            },
+          ),
         ];
       case UserRole.student:
         return [
@@ -81,8 +101,15 @@ class SideMenu extends StatelessWidget {
           ),
           ListTile(
             leading: const Icon(Icons.notifications),
-            title: const Text('Alerts'),
-            onTap: () => Navigator.pop(context),
+            title: const Text('Pending SOS Alerts'),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const PendingSOSScreen(),
+                ),
+              );
+            },
           ),
         ];
     }
@@ -98,8 +125,10 @@ class SideMenu extends StatelessWidget {
             accountEmail: Text(role.name.toUpperCase()),
             currentAccountPicture: CircleAvatar(
               backgroundColor: Colors.white,
-              child: Text( username.isNotEmpty ? username[0].toUpperCase() : "?",
-                style: const TextStyle(fontSize: 20),),
+              child: Text(
+                username.isNotEmpty ? username[0].toUpperCase() : "?",
+                style: const TextStyle(fontSize: 20),
+              ),
             ),
           ),
           Expanded(

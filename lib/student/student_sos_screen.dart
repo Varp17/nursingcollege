@@ -1,26 +1,6 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
-class Brand {
-  static const deepTeal = Color(0xFF0F4C75);
-  static const sosCoral = Color(0xFFE63946);
-  static const softGrey = Color(0xFFF4F6F8);
-  static const navy = Color(0xFF0C2D48);
-  static const pastelPink = Color(0xFFFFC7CF);
-  static const r2xl = 24.0;
-
-  static const gap8 = SizedBox(height: 8);
-  static const gap12 = SizedBox(height: 12);
-  static const gap16 = SizedBox(height: 16);
-  static const gap24 = SizedBox(height: 24);
-
-  static TextStyle titleLg(BuildContext c) =>
-      Theme.of(c).textTheme.headlineSmall!.copyWith(fontWeight: FontWeight.w700);
-  static TextStyle bodyMd(BuildContext c) => Theme.of(c).textTheme.bodyMedium!;
-}
 
 class StudentSosScreen extends StatefulWidget {
   const StudentSosScreen({super.key});
@@ -29,242 +9,305 @@ class StudentSosScreen extends StatefulWidget {
   State<StudentSosScreen> createState() => _StudentSosScreenState();
 }
 
-class _StudentSosScreenState extends State<StudentSosScreen> {
-  String? _selectedLocation;
-  String? _otherLocation;
-  String? _selectedIssue;
-  String? _otherIssue;
-  String _selectedType = 'standard';
-  bool _overlayVisible = false;
-  bool _confirmShown = false;
-  int _remaining = 0;
-  Timer? _timer;
+class _StudentSosScreenState extends State<StudentSosScreen>
+    with SingleTickerProviderStateMixin {
+  String? chosenType;
+  String? chosenLocation;
+  String? lastSentType;
+  final TextEditingController desc = TextEditingController();
+  bool anonymous = false;
+  bool sending = false;
 
-  final List<String> _locations = [
-    "Ground Floor","First Floor","Second Floor","Classroom","Laboratory",
-    "Library","Canteen","Parking","Outside Campus"
+  final List<String> types = ["Standard SOS", "Girls SOS"];
+  final List<String> locations = [
+    "Ground Floor",
+    "First Floor",
+    "Second Floor",
+    "Classroom",
+    "Laboratory",
+    "Library",
+    "Canteen",
+    "Parking",
+    "Outside Campus"
   ];
 
-  final List<String> _issues = [
-    "Creating ruckus","Harmful chemical","Crowd","Injury","Person help",
-    "Ambulance","Other"
-  ];
+  late AnimationController _popupController;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _popupController =
+        AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
+    _scaleAnimation = CurvedAnimation(
+      parent: _popupController,
+      curve: Curves.easeOutBack,
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _popupController,
+      curve: Curves.easeIn,
+    );
+  }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _popupController.dispose();
+    desc.dispose();
     super.dispose();
   }
 
-  void _startCountdown(String type) {
-    _selectedType = type;
-    _confirmShown = false;
-    _overlayVisible = true;
-    _remaining = 15;
-    setState(() {});
-    _timer?.cancel();
-
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) return;
-      setState(() => _remaining -= 1);
-      HapticFeedback.vibrate();
-
-      if (!_confirmShown && _remaining <= 10) {
-        _confirmShown = true;
-        _showConfirmSheet(type);
-      }
-
-      if (_remaining <= 0) {
-        t.cancel();
-        _sendIncident(autoFromTimer: true);
-      }
-    });
-  }
-
-  void _cancelAll() {
-    _timer?.cancel();
-    _resetOverlay();
-  }
-
-  void _resetOverlay() {
-    setState(() {
-      _overlayVisible = false;
-      _remaining = 0;
-      _confirmShown = false;
-      _selectedLocation = null;
-      _otherLocation = null;
-      _selectedIssue = null;
-      _otherIssue = null;
-    });
-  }
-
-  Future<void> _sendIncident({bool autoFromTimer = false}) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'anonymous';
-    final payload = {
-      'studentUid': uid,
-      'type': _selectedType,
-      'location': _selectedLocation ?? (_otherLocation?.trim().isNotEmpty == true ? _otherLocation!.trim() : null),
-      'issue': _selectedIssue ?? (_otherIssue?.trim().isNotEmpty == true ? _otherIssue!.trim() : null),
-      'status': 'sent',
-      'discreet': _selectedType=='girls',
-      'countdownSeconds': 15,
-      'confirmedAt5s': _confirmShown,
-      'autoSentOnTimeout': autoFromTimer,
-      'createdAt': FieldValue.serverTimestamp(),
-    };
-    try {
-      await FirebaseFirestore.instance.collection('incidents').add(payload);
-      _overlayVisible = false;
-      setState(() {});
-      _showStudentSentDialog();
-    } catch (e) {
-      if (!mounted) return;
+  Future<void> _confirmAndSendSOS() async {
+    if (chosenType == null || chosenLocation == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to send SOS: $e')),
+        const SnackBar(content: Text('Please select type and location')),
       );
-    } finally {
-      _timer?.cancel();
+      return;
     }
-  }
 
-  void _showConfirmSheet(String type) {
-    if (!mounted) return;
-    showModalBottomSheet(
-      context: context,useSafeArea: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20,20,20,28),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text("Are you sure you want to alert?", style: Brand.titleLg(ctx)),
-          Brand.gap12,
-          Text("A ${type=='standard'?'Standard':'Girls'} SOS will be sent to Security/Admin.\nYou can still cancel before countdown finishes.",
-              style: Brand.bodyMd(ctx), textAlign: TextAlign.center),
-          Brand.gap16,
-          Row(children: [
-            Expanded(child: OutlinedButton(onPressed: () { Navigator.pop(ctx); _cancelAll(); }, child: const Text("Cancel"))),
-            const SizedBox(width: 12),
-            Expanded(child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: type=='standard'?Brand.deepTeal:Brand.sosCoral,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Brand.r2xl)),
-              ),
-              onPressed: () { Navigator.pop(ctx); _sendIncident(); },
-              child: const Text("Send Now"),
-            )),
-          ])
-        ]),
-      ),
-    );
-  }
-
-  void _showStudentSentDialog() {
-    if (!mounted) return;
-    showDialog(
-      context: context, barrierDismissible: false,
+    final confirmed = await showDialog<bool>(
+      context: context,
       builder: (_) => AlertDialog(
-        title: const Text('SOS Sent'),
-        content: Text(_selectedType=='standard'
-            ? 'Your Standard SOS has been sent to Security/Admin.'
-            : 'Your Girls SOS has been sent discreetly.'),
+        title: const Text("Confirm SOS"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Type: $chosenType"),
+            Text("Location: $chosenLocation"),
+            if (desc.text.isNotEmpty) Text("Description: ${desc.text}"),
+            Text("Send anonymously: ${anonymous ? 'Yes' : 'No'}"),
+          ],
+        ),
         actions: [
-          TextButton(onPressed: () { Navigator.pop(context); _resetOverlay(); }, child: const Text('OK'))
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text("Send SOS")),
         ],
       ),
     );
+
+    if (confirmed == true) _sendSOS();
   }
 
-  Widget _gridSelection(List<String> items, String? selectedValue, Function(String) onSelect) {
-    return GridView.count(
-      shrinkWrap: true, crossAxisCount: 3, childAspectRatio: 2.5,
-      crossAxisSpacing: 8, mainAxisSpacing: 8,
-      physics: const NeverScrollableScrollPhysics(),
-      children: items.map((e) {
-        final selected = selectedValue == e;
-        return GestureDetector(
-          onTap: () => setState(() => onSelect(e)),
-          child: Container(
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: selected ? Brand.deepTeal : Colors.white,
-              border: Border.all(color: Colors.black26),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(e, style: TextStyle(color: selected?Colors.white:Colors.black)),
-          ),
-        );
-      }).toList(),
-    );
+  Future<void> _sendSOS() async {
+    setState(() => sending = true);
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'anonymous';
+    final payload = {
+      'studentUid': anonymous ? 'anonymous' : uid,
+      'type': chosenType,
+      'location': chosenLocation,
+      'description': desc.text.trim().isNotEmpty ? desc.text.trim() : null,
+      'anonymous': anonymous,
+      'status': 'sent',
+      'createdAt': FieldValue.serverTimestamp(),
+    };
+
+    try {
+      await FirebaseFirestore.instance.collection('sos_alerts').add(payload);
+
+      lastSentType = chosenType;
+
+      _popupController.forward();
+      await Future.delayed(const Duration(seconds: 2));
+      _popupController.reverse();
+
+      setState(() {
+        chosenType = null;
+        chosenLocation = null;
+        desc.clear();
+        anonymous = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to send SOS: $e')));
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Safety & SOS'), backgroundColor: Brand.deepTeal),
-      backgroundColor: Brand.softGrey,
+      appBar: AppBar(title: const Text('Send SOS')),
       body: Stack(
         children: [
-          SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('Select Location', style: Brand.titleLg(context)),
-                Brand.gap12,
-                _gridSelection(_locations, _selectedLocation, (val) => _selectedLocation=val),
-                Brand.gap24,
-                Text('Select Incident Type', style: Brand.titleLg(context)),
-                Brand.gap12,
-                _gridSelection(_issues, _selectedIssue, (val) => _selectedIssue=val),
-                Brand.gap24,
-                Row(
-                  children: [
-                    Expanded(child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Brand.deepTeal,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Hero(
+                    tag: 'sos-hero',
+                    child: Text(
+                      'Send SOS',
+                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Choose Type:'),
+                  const SizedBox(height: 8),
+                  SOSChoiceGrid(
+                    choices: types,
+                    selected: chosenType,
+                    onSelect: (s) => setState(() => chosenType = s),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Choose Location:'),
+                  const SizedBox(height: 8),
+                  SOSChoiceGrid(
+                    choices: locations,
+                    selected: chosenLocation,
+                    onSelect: (s) => setState(() => chosenLocation = s),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: desc,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      hintText: 'Optional description',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: anonymous,
+                        onChanged: (v) => setState(() => anonymous = v ?? false),
                       ),
-                      onPressed: ()=>_startCountdown('standard'),
-                      child: const Text('Send Standard SOS'),
-                    )),
-                    const SizedBox(width: 16),
-                    Expanded(child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Brand.sosCoral,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      onPressed: ()=>_startCountdown('girls'),
-                      child: const Text('Send Girls SOS'),
-                    )),
-                  ],
-                ),
-              ],
+                      const Text('Send anonymously')
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: sending ? null : _confirmAndSendSOS,
+                      child: Text(sending ? 'Sending...' : 'Record & Auto-send'),
+                    ),
+                  ),
+                  const SizedBox(height: 120), // Add padding for floating button
+                ],
+              ),
             ),
           ),
-          if(_overlayVisible) _countdownOverlay(context),
+          // Central floating circular SOS button
+          Positioned.fill(
+            child: Align(
+              alignment: Alignment.center,
+              child: GestureDetector(
+                onTap: sending ? null : _confirmAndSendSOS,
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.redAccent.withOpacity(0.4),
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                      )
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text(
+                    'SOS',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // SOS Sent popup
+          if (_popupController.status != AnimationStatus.dismissed)
+            Center(
+              child: ScaleTransition(
+                scale: _scaleAnimation,
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: Card(
+                    color: Colors.greenAccent.shade100,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    elevation: 8,
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Text(
+                        lastSentType == "Girls SOS"
+                            ? "Your Girls SOS has been sent discreetly"
+                            : "Your Standard SOS has been sent",
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
+}
 
-  Widget _countdownOverlay(BuildContext context) {
-    return Positioned.fill(
-      child: Container(
-        color: Colors.black38,
-        child: Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text('Sending SOS in $_remaining s', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
-              onPressed: _cancelAll,
-              child: const Text('Cancel', style: TextStyle(color: Colors.black)),
-            )
-          ]),
-        ),
-      ),
+class SOSChoiceGrid extends StatelessWidget {
+  final List<String> choices;
+  final String? selected;
+  final Function(String) onSelect;
+
+  const SOSChoiceGrid({
+    super.key,
+    required this.choices,
+    required this.onSelect,
+    this.selected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      shrinkWrap: true,
+      crossAxisCount: 2,
+      childAspectRatio: 3.5,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisSpacing: 8,
+      mainAxisSpacing: 8,
+      children: choices.map((e) {
+        final isSelected = e == selected;
+        return GestureDetector(
+          onTap: () => onSelect(e),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: isSelected ? Colors.redAccent : Colors.grey.shade200,
+              border: Border.all(color: Colors.black26),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: isSelected
+                  ? [BoxShadow(color: Colors.redAccent.withOpacity(0.4), blurRadius: 6)]
+                  : [],
+            ),
+            child: Text(
+              e,
+              style: TextStyle(
+                color: isSelected ? Colors.white : Colors.black87,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }

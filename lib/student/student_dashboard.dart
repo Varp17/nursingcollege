@@ -1,8 +1,11 @@
 // student/student_dashboard.dart
+import 'package:collegesafety/student/student_sos_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../common/side_menu.dart';
+import '../models/user_role.dart'; // use the single UserRole enum
+
 
 class StudentDashboard extends StatelessWidget {
   final String username;
@@ -16,45 +19,43 @@ class StudentDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final complaints = [
-      "Harassment",
-      "Ragging",
-      "Patient Violence",
-      "Fighting in Parking",
-      "Student Needs Help",
-    ];
-
     return Scaffold(
       appBar: AppBar(title: const Text("Student Dashboard")),
       drawer: SideMenu(role: role, username: username),
-      body: ListView.builder(
-        itemCount: complaints.length,
-        itemBuilder: (context, index) {
-          return Card(
-            margin: const EdgeInsets.all(8),
-            child: ListTile(
-              title: Text(complaints[index]),
-              trailing: const Icon(Icons.report),
-              onTap: () async {
-                try {
-                  await FirebaseFirestore.instance.collection("complaints").add({
-                    "type": complaints[index],
-                    "userId": FirebaseAuth.instance.currentUser!.uid,
-                    "timestamp": FieldValue.serverTimestamp(),
-                    "status": "pending",
-                  });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("${complaints[index]} reported!")),
-                  );
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Failed to report: $e")),
-                  );
-                }
-              },
+      body: Center(
+        child: GestureDetector(
+          onTap: () {
+            // Navigate to SOS screen
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const StudentSosScreen()),
+            );
+          },
+          child: Container(
+            width: 150,
+            height: 150,
+            decoration: BoxDecoration(
+              color: Colors.red,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.redAccent.withOpacity(0.6),
+                  spreadRadius: 8,
+                  blurRadius: 16,
+                ),
+              ],
             ),
-          );
-        },
+            alignment: Alignment.center,
+            child: const Text(
+              "SOS",
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
