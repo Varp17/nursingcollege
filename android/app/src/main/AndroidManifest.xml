@@ -4,9 +4,10 @@
     <!-- PERMISSIONS (must be direct children of <manifest>) -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Android 13+ runtime permission for notifications. Still declare it here. -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- optional but useful for wakelock during urgent alerts -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
         android:label="nursingcollege"
@@ -34,9 +35,10 @@
         </activity>
 
         <!-- Tell Firebase which notification channel ID to use by default -->
+
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="sos_high_priority_channel" />
+            android:value="sos_alerts" />
 
         <!-- KEEP Flutter plugin marker -->
         <meta-data

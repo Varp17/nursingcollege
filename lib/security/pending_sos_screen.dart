@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:vibration/vibration.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class PendingSOSScreen extends StatefulWidget {
   const PendingSOSScreen({super.key});
@@ -10,135 +11,111 @@ class PendingSOSScreen extends StatefulWidget {
   State<PendingSOSScreen> createState() => _PendingSOSScreenState();
 }
 
-class _PendingSOSScreenState extends State<PendingSOSScreen>
-    with SingleTickerProviderStateMixin {
+class _PendingSOSScreenState extends State<PendingSOSScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final List<String> _shownAlertIds = [];
-  OverlayEntry? _overlayEntry;
-  bool _isShowingOverlay = false;
+  final FirebaseMessaging _fcm = FirebaseMessaging.instance;
 
-  late final AnimationController _animationController;
-  late final Animation<Offset> _offsetAnimation;
+  final List<String> _shownAlertIds = [];
 
   @override
   void initState() {
     super.initState();
 
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
+    // Initialize FCM notifications
+    _initFCM();
 
-    _offsetAnimation = Tween<Offset>(
-      begin: const Offset(1, 0),
-      end: const Offset(0, 0),
-    ).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
-    );
-
-    // Listen to SOS alerts in real-time
+    // Listen to Firestore for new pending incidents (real-time)
     _firestore
-        .collection('sos_alerts')
-        .where('status', isEqualTo: 'pending')
+        .collection('incidents')
+        .where('status', isEqualTo: 'sent')
         .orderBy('timestamp', descending: true)
         .snapshots()
         .listen((snapshot) {
       for (var alert in snapshot.docs) {
         if (!_shownAlertIds.contains(alert.id)) {
           _shownAlertIds.add(alert.id);
-          _showSlidingPopup(alert);
+          _showCenteredPopup(alert.data() as Map<String, dynamic>, alert.id);
         }
       }
     });
   }
 
-  void _showSlidingPopup(QueryDocumentSnapshot alert) {
-    if (_isShowingOverlay) return;
+  Future<void> _initFCM() async {
+    // Listen to foreground messages
+    FirebaseMessaging.onMessage.listen((msg) {
+      final data = msg.data;
+      final incidentId = data['incidentId'];
+      if (incidentId != null && !_shownAlertIds.contains(incidentId)) {
+        _firestore.collection('incidents').doc(incidentId).get().then((doc) {
+          if (doc.exists) {
+            _shownAlertIds.add(incidentId);
+            _showCenteredPopup(doc.data()!, incidentId);
+          }
+        });
+      }
+    });
 
-    final data = alert.data() as Map<String, dynamic>;
-    final description = data['description'] ?? "No description";
-    final location = data['location'] ?? "Unknown";
-
-    _overlayEntry = OverlayEntry(
-      builder: (context) => Positioned(
-        top: 50,
-        right: 16,
-        child: SlideTransition(
-          position: _offsetAnimation,
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              width: 300,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.redAccent.shade100,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 6,
-                    offset: Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    "⚠️ SOS Alert",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  const SizedBox(height: 4),
-                  Text("Location: $location"),
-                  const SizedBox(height: 2),
-                  Text("Description: $description"),
-                  const SizedBox(height: 8),
-                  ElevatedButton(
-                    onPressed: () {
-                      _firestore
-                          .collection('sos_alerts')
-                          .doc(alert.id)
-                          .update({'status': 'resolved'});
-                      _removeOverlay();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      minimumSize: const Size(double.infinity, 36),
-                    ),
-                    child: const Text("Resolve"),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-
-    Overlay.of(context)?.insert(_overlayEntry!);
-    _isShowingOverlay = true;
-
-    // Vibrate device
-    Vibration.vibrate(duration: 500);
-
-    _animationController.forward();
-
-    // Auto-hide after 5 seconds
-    Future.delayed(const Duration(seconds: 5), () {
-      _animationController.reverse().then((_) => _removeOverlay());
+    // Handle taps when app is backgrounded
+    FirebaseMessaging.onMessageOpenedApp.listen((msg) {
+      final data = msg.data;
+      final incidentId = data['incidentId'];
+      if (incidentId != null) {
+        _firestore.collection('incidents').doc(incidentId).get().then((doc) {
+          if (doc.exists) {
+            _showCenteredPopup(doc.data()!, incidentId);
+          }
+        });
+      }
     });
   }
 
-  void _removeOverlay() {
-    _overlayEntry?.remove();
-    _overlayEntry = null;
-    _isShowingOverlay = false;
-  }
+  void _showCenteredPopup(Map<String, dynamic> data, String incidentId) {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // forces user to act
+      builder: (context) => AlertDialog(
+        title: Text("🚨 ${data['type'] ?? 'SOS'} Alert"),
+        content: SingleChildScrollView(
+          child: ListBody(
+            children: [
+              Text("Student: ${data['studentName'] ?? 'Anonymous'}"),
+              Text("Section: ${data['section'] ?? 'Unknown'}"),
+              Text("Location: ${data['location'] ?? 'Unknown'}"),
+              Text("Description: ${data['description'] ?? 'None'}"),
+              if (data['timestamp'] != null)
+                Text("Reported at: ${(data['timestamp'] as Timestamp).toDate()}"),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              _firestore
+                  .collection('incidents')
+                  .doc(incidentId)
+                  .update({'status': 'acknowledged'});
+              Navigator.of(context).pop();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text("Acknowledge"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              _firestore
+                  .collection('incidents')
+                  .doc(incidentId)
+                  .update({'status': 'resolved'});
+              Navigator.of(context).pop();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text("Resolve"),
+          ),
+        ],
+      ),
+    );
 
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
+    // Vibrate device for alert
+    Vibration.vibrate(duration: 500);
   }
 
   @override
@@ -150,8 +127,8 @@ class _PendingSOSScreenState extends State<PendingSOSScreen>
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: _firestore
-            .collection('sos_alerts')
-            .where('status', isEqualTo: 'pending')
+            .collection('incidents')
+            .where('status', isEqualTo: 'sent')
             .orderBy('timestamp', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
@@ -193,12 +170,13 @@ class _PendingSOSScreenState extends State<PendingSOSScreen>
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                     onPressed: () {
                       _firestore
-                          .collection('sos_alerts')
+                          .collection('incidents')
                           .doc(data.id)
                           .update({'status': 'resolved'});
                     },
                     child: const Text('Resolve'),
                   ),
+                  onTap: () => _showCenteredPopup(alertData, data.id),
                 ),
               );
             },

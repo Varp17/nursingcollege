@@ -1,8 +1,11 @@
-// lib/services/notification_service.dart
+import 'dart:convert';
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../main.dart';
 import 'firestore_service.dart';
 
 class NotificationService {
@@ -12,45 +15,92 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _localNotifications =
   FlutterLocalNotificationsPlugin();
 
+  /// Initialize plugin
   static Future<void> initPlugin() async {
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const initSettings = InitializationSettings(android: androidInit);
+    const iosInit = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
 
-    await _localNotifications.initialize(initSettings);
+    const settings = InitializationSettings(android: androidInit, iOS: iosInit);
 
-    // Ask notification permission (Android 13+)
-    if (Platform.isAndroid) {
-      await Permission.notification.request();
-    }
+    await _localNotifications.initialize(
+      settings,
+      onDidReceiveNotificationResponse: (details) {
+        if (details.payload != null) {
+          final data = jsonDecode(details.payload!);
+          if (data.containsKey('incidentId')) {
+            Navigator.of(MyApp.navigatorKey.currentContext!).pushNamed(
+              '/emergency',
+              arguments: {'incidentId': data['incidentId']},
+            );
+          }
+        }
+      },
+    );
+
+    if (Platform.isAndroid) await Permission.notification.request();
   }
 
+  /// Initialize FCM
   Future<void> init(String uid) async {
-    // iOS permission
     await _fcm.requestPermission();
 
-    // Save initial FCM token
     final token = await _fcm.getToken();
-    if (token != null) {
-      await _fs.saveFcmToken(uid, token);
-    }
+    if (token != null) await _fs.saveFcmToken(uid, token);
 
-    // Token refresh
     _fcm.onTokenRefresh.listen((newToken) async {
       await _fs.saveFcmToken(uid, newToken);
     });
 
-    // Foreground notifications
-    FirebaseMessaging.onMessage.listen((RemoteMessage msg) {
+    final role = await _fs.getUserRole(uid);
+    if (role == "security") await _fcm.subscribeToTopic("security");
+
+    FirebaseMessaging.onMessage.listen((msg) {
       final notif = msg.notification;
+      final data = msg.data;
+
       if (notif != null) {
-        _showLocalNotification(notif.title, notif.body);
+        _showLocalNotification(notif.title, notif.body, data);
+      }
+
+      if (data.containsKey('incidentId') &&
+          MyApp.navigatorKey.currentContext != null) {
+        final incidentId = data['incidentId'];
+        FirebaseFirestore.instance
+            .collection('incidents')
+            .doc(incidentId)
+            .get()
+            .then((doc) {
+          if (doc.exists) {
+            final incident = doc.data()!;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _showPopupOverlay(
+                  MyApp.navigatorKey.currentContext!, incident, incidentId);
+            });
+          }
+        });
+      }
+    });
+
+    FirebaseMessaging.onMessageOpenedApp.listen((msg) {
+      final data = msg.data;
+      if (data.containsKey('incidentId')) {
+        Navigator.of(MyApp.navigatorKey.currentContext!).pushNamed(
+          '/emergency',
+          arguments: {'incidentId': data['incidentId']},
+        );
       }
     });
   }
 
-  static Future<void> _showLocalNotification(String? title, String? body) async {
+  /// Local notification
+  static Future<void> _showLocalNotification(
+      String? title, String? body, Map<String, dynamic> data) async {
     const androidDetails = AndroidNotificationDetails(
-      'sos_high_priority_channel',
+      'sos_alerts',
       'SOS Alerts',
       channelDescription: 'High priority SOS alerts',
       importance: Importance.max,
@@ -58,13 +108,97 @@ class NotificationService {
       playSound: true,
     );
 
-    const details = NotificationDetails(android: androidDetails);
-
+    final details = NotificationDetails(android: androidDetails);
     await _localNotifications.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
       title,
       body,
       details,
+      payload: jsonEncode(data),
     );
+  }
+
+  /// Popup overlay
+  static void _showPopupOverlay(
+      BuildContext context, Map<String, dynamic> data, String incidentId) {
+    late OverlayEntry overlayEntry;
+
+    overlayEntry = OverlayEntry(
+      builder: (context) => Center(
+        child: Material(
+          color: Colors.black38.withOpacity(0.6),
+          child: DraggableScrollableSheet(
+            initialChildSize: 0.35,
+            maxChildSize: 0.6,
+            minChildSize: 0.25,
+            builder: (context, scrollController) => Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red.shade100,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: ListView(
+                controller: scrollController,
+                children: [
+                  Text(
+                    "⚠️ ${data['type'] ?? 'SOS'} Alert",
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text("Student: ${data['studentName'] ?? 'Anonymous'}"),
+                  const SizedBox(height: 4),
+                  Text("Location: ${data['location'] ?? 'Unknown'}"),
+                  const SizedBox(height: 4),
+                  Text("Description: ${data['description'] ?? 'None'}"),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green),
+                        onPressed: () {
+                          FirebaseFirestore.instance
+                              .collection('incidents')
+                              .doc(incidentId)
+                              .update({
+                            'status': 'acknowledged',
+                            'acknowledged_at': FieldValue.serverTimestamp(),
+                          });
+                          overlayEntry.remove();
+                        },
+                        child: const Text("Acknowledge"),
+                      ),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red),
+                        onPressed: () {
+                          FirebaseFirestore.instance
+                              .collection('incidents')
+                              .doc(incidentId)
+                              .update({
+                            'status': 'resolved',
+                            'resolved_at': FieldValue.serverTimestamp(),
+                          });
+                          overlayEntry.remove();
+                        },
+                        child: const Text("Resolve"),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Overlay.of(context)?.insert(overlayEntry);
+
+    Future.delayed(const Duration(seconds: 10), () {
+      if (overlayEntry.mounted) overlayEntry.remove();
+    });
   }
 }

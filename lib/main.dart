@@ -1,12 +1,13 @@
-import 'dart:io';
+// lib/main.dart
+import 'package:collegesafety/security/emergency_alert_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'common/side_menu.dart';
 import 'firebase_options.dart';
 import 'landing_screen.dart';
 import 'services/notification_service.dart';
+import 'services/firestore_service.dart';
 
 // Screens
 import 'login_screen.dart';
@@ -15,9 +16,7 @@ import 'student/student_dashboard.dart';
 import 'security/security_dashboard.dart';
 import 'admin/manage_users_screen.dart';
 import 'superadmin/superadmin_dashboard.dart';
-import 'services/auth_service.dart';
-import '../models/user_role.dart'; // use the single UserRole enum
-
+import 'models/user_role.dart';
 
 // --- BACKGROUND HANDLER ---
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -41,12 +40,14 @@ Future<void> main() async {
 }
 
 class MyApp extends StatelessWidget {
+  static final navigatorKey = GlobalKey<NavigatorState>();
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Nursing College Safety',
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(primarySwatch: Colors.blue),
       home: StreamBuilder<User?>(
@@ -59,8 +60,39 @@ class MyApp extends StatelessWidget {
           }
 
           if (snapshot.hasData && snapshot.data != null) {
-            // User is logged in, go to LandingScreen
-            return const LandingScreen();
+            final uid = snapshot.data!.uid;
+            // Fetch user details from Firestore
+            return FutureBuilder<Map<String, dynamic>?>(
+              future: FirestoreService().getUserDetails(uid),
+              builder: (context, userSnapshot) {
+                if (!userSnapshot.hasData) {
+                  return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                final userData = userSnapshot.data!;
+                final roleString = userData['role'] as String?;
+                final role = FirestoreService().mapRoleFromString(roleString);
+                final username = userData['name'] ?? 'User';
+
+                // Initialize FCM for this user
+                NotificationService().init(uid);
+
+                // Navigate to role-specific dashboard
+                switch (role) {
+                  case UserRole.student:
+                    return StudentDashboard(username: username, role: role);
+                  case UserRole.security:
+                    return SecurityDashboard(username: username, role: role);
+                  case UserRole.admin:
+                    return ManageUsersScreen(username: username, role: role);
+                  case UserRole.superadmin:
+                    return SuperAdminDashboard(username: username, role: role);
+                  default:
+                    return LandingScreen();
+                }
+              },
+            );
           } else {
             // User not logged in, show LoginScreen
             return const LoginScreen();
@@ -78,6 +110,10 @@ class MyApp extends StatelessWidget {
           username: 'User',
           role: UserRole.security,
         ),
+        '/emergency': (context) {
+          final args = ModalRoute.of(context)!.settings.arguments as Map;
+          return EmergencyAlertScreen(incidentId: args['incidentId']);
+        },
         '/admin': (context) => ManageUsersScreen(
           username: 'User',
           role: UserRole.admin,
@@ -90,4 +126,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-

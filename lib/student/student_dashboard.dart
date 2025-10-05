@@ -1,8 +1,6 @@
 // student/student_dashboard.dart
 import 'package:collegesafety/student/student_sos_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../common/side_menu.dart';
 import '../models/user_role.dart'; // use the single UserRole enum
 
