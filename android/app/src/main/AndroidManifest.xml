@@ -1,60 +1,69 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.nursing.nursingcollege">
 
-    <!-- PERMISSIONS (must be direct children of <manifest>) -->
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- Android 13+ runtime permission for notifications. Still declare it here. -->
-    <!-- optional but useful for wakelock during urgent alerts -->
-    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- PERMISSIONS -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <application
-        android:label="nursingcollege"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:label="nursingcollege"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="true"
+        android:usesCleartextTraffic="true">
 
+        <!-- MAIN ACTIVITY -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
-            <!-- Splash / Normal theme metadata (Flutter) -->
+
+            <!-- Flutter embedding normal theme -->
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
-                android:resource="@style/NormalTheme"
-                />
+                android:resource="@style/NormalTheme"/>
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
+            <!-- Handle notification taps -->
+            <intent-filter>
+                <action android:name="FLUTTER_NOTIFICATION_CLICK" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
 
-        <!-- Tell Firebase which notification channel ID to use by default -->
+        <!-- Background Service -->
+        <service
+            android:name="com.transistorsoft.flutter.backgroundfetch.HeadlessTask"
+            android:exported="false" />
 
+        <!-- Firebase Messaging default channel -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="sos_alerts" />
+            android:value="sos_emergency_channel"/>
 
-        <!-- KEEP Flutter plugin marker -->
+        <!-- Flutter embedding marker -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Google Play Services version -->
         <meta-data
             android:name="com.google.android.gms.version"
             android:value="@integer/google_play_services_version"/>
-
     </application>
-
-    <!-- Required to query activities that can process text (Flutter plugin) -->
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT"/>
-            <data android:mimeType="text/plain"/>
-        </intent>
-    </queries>
 </manifest>

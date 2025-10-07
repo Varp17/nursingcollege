@@ -10,107 +10,43 @@ class StudentSosScreen extends StatefulWidget {
   State<StudentSosScreen> createState() => _StudentSosScreenState();
 }
 
-class _StudentSosScreenState extends State<StudentSosScreen>
-    with SingleTickerProviderStateMixin {
+class _StudentSosScreenState extends State<StudentSosScreen> {
   String? chosenType;
   String? chosenLocation;
-  String? lastSentType;
   final TextEditingController desc = TextEditingController();
   bool anonymous = false;
   bool sending = false;
 
   final List<String> types = ["Standard SOS", "Girls SOS"];
   final List<String> locations = [
-    "Ground Floor",
-    "First Floor",
-    "Second Floor",
-    "Classroom",
-    "Laboratory",
-    "Library",
-    "Canteen",
-    "Parking",
-    "Outside Campus"
+    "Ground Floor", "First Floor", "Second Floor", "Classroom",
+    "Laboratory", "Library", "Canteen", "Parking", "Outside Campus"
   ];
 
-  late AnimationController _popupController;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _fadeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _popupController =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
-    _scaleAnimation = CurvedAnimation(
-      parent: _popupController,
-      curve: Curves.easeOutBack,
-    );
-    _fadeAnimation = CurvedAnimation(
-      parent: _popupController,
-      curve: Curves.easeIn,
-    );
-  }
-
-  @override
-  void dispose() {
-    _popupController.dispose();
-    desc.dispose();
-    super.dispose();
-  }
-
-  Future<void> _confirmAndSendSOS() async {
-    if (chosenType == null || chosenLocation == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select type and location')),
-      );
-      return;
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Confirm SOS"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Type: $chosenType"),
-            Text("Location: $chosenLocation"),
-            if (desc.text.isNotEmpty) Text("Description: ${desc.text}"),
-            Text("Send anonymously: ${anonymous ? 'Yes' : 'No'}"),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text("Send SOS")),
-        ],
-      ),
-    );
-
-    if (confirmed == true) _sendSOS();
-  }
-
-  Future<void> _sendSOS() async {
+  Future<void> _sendSOS(String status) async {
     setState(() => sending = true);
     final uid = FirebaseAuth.instance.currentUser?.uid ?? 'anonymous';
+    final user = FirebaseAuth.instance.currentUser;
 
     final payload = {
       'studentUid': anonymous ? 'anonymous' : uid,
-      'type': chosenType,
-      'location': chosenLocation,
+      'studentName': anonymous ? 'Anonymous' : user?.displayName ?? 'Student',
+      'type': chosenType ?? 'SOS',
+      'location': chosenLocation ?? 'Unknown',
       'description': desc.text.trim().isNotEmpty ? desc.text.trim() : null,
       'anonymous': anonymous,
-      'status': 'sent',
+      'status': status,
       'timestamp': FieldValue.serverTimestamp(),
     };
 
     try {
+      // Save to incidents collection
       final docRef = await FirebaseFirestore.instance.collection('incidents').add(payload);
-      lastSentType = chosenType;
+      final incidentId = docRef.id;
+      await docRef.update({'incidentId': incidentId});
 
-      _popupController.forward();
-      await Future.delayed(const Duration(seconds: 4));
-      _popupController.reverse();
+      // 🔥 FREE: Create real-time security alert
+      await _createSecurityAlert(incidentId, payload);
 
       setState(() {
         chosenType = null;
@@ -120,15 +56,49 @@ class _StudentSosScreenState extends State<StudentSosScreen>
       });
 
       Vibration.vibrate(duration: 300);
-
-      print('✅ SOS sent. Document ID: ${docRef.id}');
-    } catch (e) {
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to send SOS: $e')),
+        SnackBar(
+          content: Text('✅ SOS sent! Security will be notified immediately'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to send SOS: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
-      if (mounted) setState(() => sending = false);
+      setState(() => sending = false);
+    }
+  }
+
+  // 🔥 FREE: Create security alert that triggers real-time updates
+  Future<void> _createSecurityAlert(String incidentId, Map<String, dynamic> incidentData) async {
+    try {
+      final alertData = {
+        'incidentId': incidentId,
+        'studentName': incidentData['studentName'],
+        'location': incidentData['location'],
+        'type': incidentData['type'],
+        'description': incidentData['description'],
+        'timestamp': FieldValue.serverTimestamp(),
+        'priority': 'high',
+        'status': 'new', // new, acknowledged, resolved
+        'alertType': 'sos_emergency',
+        'readBy': [], // Track which security users have seen this
+      };
+
+      await FirebaseFirestore.instance
+          .collection('security_alerts')
+          .doc(incidentId)
+          .set(alertData);
+
+      print('🔔 Security alert created: $incidentId');
+    } catch (e) {
+      print('Error creating security alert: $e');
     }
   }
 
@@ -136,144 +106,57 @@ class _StudentSosScreenState extends State<StudentSosScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Send SOS'), backgroundColor: Colors.redAccent),
-      body: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Send SOS',
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text('Select SOS Type:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  SOSChoiceGrid(
-                    choices: types,
-                    selected: chosenType,
-                    onSelect: (s) => setState(() => chosenType = s),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('Select Location:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  SOSChoiceGrid(
-                    choices: locations,
-                    selected: chosenLocation,
-                    onSelect: (s) => setState(() => chosenLocation = s),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: desc,
-                    maxLines: 3,
-                    decoration: InputDecoration(
-                      hintText: 'Optional description',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Checkbox(value: anonymous, onChanged: (v) => setState(() => anonymous = v ?? false)),
-                      const Text('Send anonymously')
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.redAccent,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: sending ? null : _confirmAndSendSOS,
-                      child: Text(sending ? 'Sending...' : 'Send SOS', style: const TextStyle(fontSize: 18)),
-                    ),
-                  ),
-                  const SizedBox(height: 50),
-                ],
-              ),
-            ),
-          ),
-          if (_popupController.status != AnimationStatus.dismissed)
-            Center(
-              child: ScaleTransition(
-                scale: _scaleAnimation,
-                child: FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: Card(
-                    color: Colors.greenAccent.shade100,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    elevation: 8,
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Text(
-                        lastSentType == "Girls SOS"
-                            ? "Your Girls SOS has been sent discreetly"
-                            : "Your Standard SOS has been sent",
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Send SOS', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              const Text('Select SOS Type:', style: TextStyle(fontWeight: FontWeight.bold)),
+              ...types.map((e) => RadioListTile(
+                  title: Text(e),
+                  value: e,
+                  groupValue: chosenType,
+                  onChanged: (v) => setState(() => chosenType = v))),
+              const SizedBox(height: 16),
+              const Text('Select Location:', style: TextStyle(fontWeight: FontWeight.bold)),
+              ...locations.map((e) => RadioListTile(
+                  title: Text(e),
+                  value: e,
+                  groupValue: chosenLocation,
+                  onChanged: (v) => setState(() => chosenLocation = v))),
+              const SizedBox(height: 16),
+              TextField(
+                controller: desc,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'Optional description',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class SOSChoiceGrid extends StatelessWidget {
-  final List<String> choices;
-  final String? selected;
-  final Function(String) onSelect;
-
-  const SOSChoiceGrid({
-    super.key,
-    required this.choices,
-    required this.onSelect,
-    this.selected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GridView.count(
-      shrinkWrap: true,
-      crossAxisCount: 2,
-      childAspectRatio: 3.5,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      children: choices.map((e) {
-        final isSelected = e == selected;
-        return GestureDetector(
-          onTap: () => onSelect(e),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeInOut,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: isSelected ? Colors.redAccent : Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: isSelected
-                  ? [BoxShadow(color: Colors.redAccent.withOpacity(0.4), blurRadius: 8)]
-                  : [],
-            ),
-            child: Text(
-              e,
-              style: TextStyle(
-                color: isSelected ? Colors.white : Colors.black87,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              Row(children: [
+                Checkbox(value: anonymous, onChanged: (v) => setState(() => anonymous = v ?? false)),
+                const Text('Send anonymously')
+              ]),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: sending ? null : () => _sendSOS('sent'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                  ),
+                  child: Text(sending ? 'Sending SOS...' : '🚨 SEND EMERGENCY SOS'),
+                ),
               ),
-            ),
+            ],
           ),
-        );
-      }).toList(),
+        ),
+      ),
     );
   }
 }

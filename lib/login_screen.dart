@@ -1,3 +1,5 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:collegesafety/profile_completion_screen.dart';
 import 'package:collegesafety/widgets/custom_button.dart';
@@ -63,6 +65,8 @@ class _LoginScreenState extends State<LoginScreen> {
       switch (roleStr) {
         case "student":
           Navigator.pushReplacement(
+            // ignore: duplicate_ignore
+            // ignore: use_build_context_synchronously
             context,
             MaterialPageRoute(
               builder: (_) =>

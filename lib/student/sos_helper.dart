@@ -33,7 +33,7 @@ class SosHelper {
     final alertId = await _fs.createAlert(alertData);
 
     if (voiceNoteFile != null) {
-      final url = await _fs.uploadVoiceNote(alertId, voiceNoteFile);
+      await _fs.uploadVoiceNote(alertId, voiceNoteFile);
       // update stored voice url already inside upload
     }
 

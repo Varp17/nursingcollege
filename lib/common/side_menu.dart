@@ -3,7 +3,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user_role.dart';
 import '../admin/manage_users_screen.dart';
 import '../superadmin/superadmin_dashboard.dart';
-import '../security/pending_sos_screen.dart'; // Import the Pending SOS screen
+import '../security/pending_sos_screen.dart';
+import '../student/student_dashboard.dart';
+import '../security/security_dashboard.dart';
+import '../admin/admin_dashboard.dart';
+import '../security/security_alerts_screen.dart';
+import '../superadmin/system_analytics_screen.dart';
 
 class SideMenu extends StatelessWidget {
   final UserRole role;
@@ -17,31 +22,81 @@ class SideMenu extends StatelessWidget {
   }
 
   List<Widget> _getMenuItems(BuildContext context) {
+    final commonItems = [
+      ListTile(
+        leading: const Icon(Icons.dashboard),
+        title: const Text('Dashboard'),
+        onTap: () {
+          Navigator.pop(context);
+          // Navigate to respective dashboard based on role
+          switch (role) {
+            case UserRole.superadmin:
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SuperAdminDashboard(
+                    username: username,
+                    role: role,
+                  ),
+                ),
+              );
+              break;
+            case UserRole.admin:
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AdminDashboard(
+                    username: username,
+                    role: role,
+                  ),
+                ),
+              );
+              break;
+            case UserRole.security:
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SecurityDashboard(
+                    username: username,
+                    role: role,
+                  ),
+                ),
+              );
+              break;
+            case UserRole.student:
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => StudentDashboard(
+                    username: username,
+                    role: role,
+                  ),
+                ),
+              );
+              break;
+          }
+        },
+      ),
+    ];
+
+    final roleSpecificItems = <Widget>[];
+
     switch (role) {
       case UserRole.superadmin:
-        return [
-          ListTile(
-            leading: const Icon(Icons.dashboard),
-            title: const Text('Dashboard'),
-            onTap: () => Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => SuperAdminDashboard(
-                  username: username,
-                  role: role,
-                ),
-              ),
-            ),
-          ),
+        roleSpecificItems.addAll([
           ListTile(
             leading: const Icon(Icons.manage_accounts),
             title: const Text('Manage Admins'),
-            onTap: () => Navigator.pop(context),
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: Add Manage Admins screen navigation
+            },
           ),
           ListTile(
-            leading: const Icon(Icons.manage_accounts),
+            leading: const Icon(Icons.people),
             title: const Text('Manage Users'),
             onTap: () {
+              Navigator.pop(context);
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -53,23 +108,37 @@ class SideMenu extends StatelessWidget {
               );
             },
           ),
-        ];
-      case UserRole.admin:
-        return [
           ListTile(
-            leading: const Icon(Icons.dashboard),
-            title: const Text('Dashboard'),
-            onTap: () => Navigator.pop(context),
+            leading: const Icon(Icons.analytics),
+            title: const Text('System Analytics'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SystemAnalyticsScreen(),
+                ),
+              );
+            },
           ),
+        ]);
+        break;
+
+      case UserRole.admin:
+        roleSpecificItems.addAll([
           ListTile(
             leading: const Icon(Icons.school),
             title: const Text('Student Records'),
-            onTap: () => Navigator.pop(context),
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: Add Student Records screen navigation
+            },
           ),
           ListTile(
             leading: const Icon(Icons.warning),
             title: const Text('Pending SOS Alerts'),
             onTap: () {
+              Navigator.pop(context);
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -78,40 +147,128 @@ class SideMenu extends StatelessWidget {
               );
             },
           ),
-        ];
+          ListTile(
+            leading: const Icon(Icons.list_alt),
+            title: const Text('All Complaints'),
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: Add All Complaints screen navigation
+            },
+          ),
+        ]);
+        break;
+
+      case UserRole.security:
+        roleSpecificItems.addAll([
+          ListTile(
+            leading: const Icon(Icons.security),
+            title: const Text('Check-in Logs'),
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: Add Check-in Logs screen navigation
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.notifications_active),
+            title: const Text('Pending SOS Alerts'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const PendingSOSScreen(),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.warning_amber),
+            title: const Text('Security Alerts'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SecurityAlertsScreen(),
+                ),
+              );
+            },
+          ),
+        ]);
+        break;
+
       case UserRole.student:
-        return [
+        roleSpecificItems.addAll([
+          ListTile(
+            leading: const Icon(Icons.report_problem),
+            title: const Text('Report Complaint'),
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: Add Report Complaint screen navigation
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.history),
+            title: const Text('My Complaints'),
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: Add My Complaints screen navigation
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.sos),
+            title: const Text('Emergency SOS'),
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: Add Emergency SOS screen navigation
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.book),
             title: const Text('My Courses'),
-            onTap: () => Navigator.pop(context),
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: Add My Courses screen navigation
+            },
           ),
           ListTile(
             leading: const Icon(Icons.schedule),
             title: const Text('My Schedule'),
-            onTap: () => Navigator.pop(context),
-          ),
-        ];
-      case UserRole.security:
-        return [
-          ListTile(
-            leading: const Icon(Icons.security),
-            title: const Text('Check-in Logs'),
-            onTap: () => Navigator.pop(context),
-          ),
-          ListTile(
-            leading: const Icon(Icons.notifications),
-            title: const Text('Pending SOS Alerts'),
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const PendingSOSScreen(),
-                ),
-              );
+              Navigator.pop(context);
+              // TODO: Add My Schedule screen navigation
             },
           ),
-        ];
+        ]);
+        break;
+    }
+
+    return [...commonItems, ...roleSpecificItems];
+  }
+
+  Color _getRoleColor(UserRole role) {
+    switch (role) {
+      case UserRole.superadmin:
+        return Colors.purple.shade800;
+      case UserRole.admin:
+        return Colors.blue.shade800;
+      case UserRole.security:
+        return Colors.orange.shade800;
+      case UserRole.student:
+        return Colors.green.shade800;
+    }
+  }
+
+  String _getRoleDisplayName(UserRole role) {
+    switch (role) {
+      case UserRole.superadmin:
+        return "Super Administrator";
+      case UserRole.admin:
+        return "Administrator";
+      case UserRole.security:
+        return "Security Personnel";
+      case UserRole.student:
+        return "Student";
     }
   }
 
@@ -121,13 +278,33 @@ class SideMenu extends StatelessWidget {
       child: Column(
         children: [
           UserAccountsDrawerHeader(
-            accountName: Text(username),
-            accountEmail: Text(role.name.toUpperCase()),
+            decoration: BoxDecoration(
+              color: _getRoleColor(role),
+            ),
+            accountName: Text(
+              username.isNotEmpty ? username : 'User',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            accountEmail: Text(
+              _getRoleDisplayName(role),
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.white70,
+              ),
+            ),
             currentAccountPicture: CircleAvatar(
               backgroundColor: Colors.white,
               child: Text(
-                username.isNotEmpty ? username[0].toUpperCase() : "?",
-                style: const TextStyle(fontSize: 20),
+                username.isNotEmpty ? username[0].toUpperCase() : "U",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: _getRoleColor(role),
+                ),
               ),
             ),
           ),
@@ -138,10 +315,16 @@ class SideMenu extends StatelessWidget {
             ),
           ),
           const Divider(),
-          ListTile(
-            leading: const Icon(Icons.logout),
-            title: const Text('Sign Out'),
-            onTap: () => _signOut(context),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text(
+                'Sign Out',
+                style: TextStyle(color: Colors.red),
+              ),
+              onTap: () => _signOut(context),
+            ),
           ),
         ],
       ),

@@ -1,120 +1,57 @@
-const functions = require('firebase-functions');
-const admin = require('firebase-admin');
+const functions = require("firebase-functions");
+const admin = require("firebase-admin");
 
 admin.initializeApp();
+const fcm = admin.messaging();
 
-const db = admin.firestore();
-const messaging = admin.messaging();
+// Automatic SOS notification to security
+exports.sendSosNotificationToSecurity = functions.firestore
+    .document('incidents/{incidentId}')
+    .onCreate(async (snap, context) => {
+        const incident = snap.data();
+        const incidentId = context.params.incidentId;
 
-exports.onNewIncidentSendNotifications = functions.firestore
-  .document('incidents/{incidentId}') // 👈 now listens to "incidents"
-  .onCreate(async (snap, context) => {
-    const incident = snap.data();
-    if (!incident) return null;
+        if (!incident) return null;
 
-    // Only trigger if status = "sent"
-    if (incident.status !== 'sent') return null;
+        const title = `🚨 ${incident.type || "SOS"} ALERT`;
+        const body = `${incident.studentName} at ${incident.location} - ${incident.description || "Needs immediate assistance"}`;
 
-    const type = incident.type || 'SOS';
-    const section = incident.section || 'Campus';
-    const id = context.params.incidentId;
+        const payload = {
+            notification: {
+                title: title,
+                body: body,
+                sound: "default",
+            },
+            data: {
+                incidentId: incidentId,
+                type: 'sos_alert',
+                studentName: incident.studentName || "Anonymous",
+                location: incident.location || "Unknown",
+                priority: 'high',
+                timestamp: new Date().toISOString(),
+            },
+            android: {
+                priority: 'high',
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        sound: 'default',
+                        badge: 1,
+                        priority: 'high',
+                    },
+                },
+            },
+        };
 
-    // Compose notification payload
-    const payload = {
-      notification: {
-        title: `🚨 SOS: ${type}`,
-        body: `${section} — Tap to view.`,
-      },
-      data: {
-        incidentId: id,
-        type: type,
-        section: section,
-        anonymous: String(incident.anonymous || false),
-        createdAt: new Date().toISOString(),
-        click_action: "FLUTTER_NOTIFICATION_CLICK", // 👈 required for navigation
-      },
-      android: {
-        priority: "high",
-        ttl: 3600 * 1000, // 1 hour
-        notification: {
-          channelId: "sos_alerts",
-          sound: "default",
-          vibrateTimingsMillis: [200, 500, 200, 500],
-          priority: "max",
-        },
-      },
-      apns: {
-        payload: {
-          aps: {
-            sound: "default",
-            badge: 1,
-            contentAvailable: true,
-          },
-        },
-      },
-    };
-
-    // 1) Broadcast to "security" topic
-    try {
-      await messaging.sendToTopic('security', payload);
-      console.log('✅ Sent notification to topic security');
-    } catch (err) {
-      console.error('❌ Error sending to topic security', err);
-    }
-
-    // 2) Send to individual approved security users (device tokens)
-    try {
-      const secQuery = await db.collection('users')
-        .where('role', '==', 'security')
-        .where('approved', '==', true)
-        .get();
-
-      let tokens = [];
-      secQuery.forEach(doc => {
-        const data = doc.data();
-        if (data && data.fcmToken) tokens.push(data.fcmToken);
-      });
-
-      // Clean invalid / duplicate tokens
-      tokens = Array.from(new Set(tokens.filter(t => typeof t === 'string' && t.length > 10)));
-
-      if (tokens.length > 0) {
-        const chunkSize = 500; // FCM limit
-        for (let i = 0; i < tokens.length; i += chunkSize) {
-          const batch = tokens.slice(i, i + chunkSize);
-          const res = await messaging.sendToDevice(batch, payload);
-          console.log(
-            `✅ Sent to ${batch.length} devices:`,
-            res.successCount, "success,", res.failureCount, "failed"
-          );
-
-          res.results.forEach((r, idx) => {
-            if (r.error) {
-              console.error(`❌ Token failed: ${batch[idx]}`, r.error);
-              if (r.error.code === 'messaging/registration-token-not-registered') {
-                // Remove invalid token from Firestore
-                db.collection('users')
-                  .where('fcmToken', '==', batch[idx])
-                  .get()
-                  .then(query => {
-                    query.forEach(doc => doc.ref.update({ fcmToken: admin.firestore.FieldValue.delete() })
-
-                  });
-              }
-            }
-          });
+        try {
+            // Send to ALL security personnel
+            await fcm.sendToTopic("security", payload);
+            console.log(`🔔 SOS notification sent to security for incident: ${incidentId}`);
+            
+        } catch (error) {
+            console.error("❌ Error sending SOS notification:", error);
         }
-      } else {
-        console.log('⚠️ No security tokens found to send to.');
-      }
-    } catch (err) {
-      console.error('❌ Error sending to security devices', err);
-    }
 
-    // 3) Audit log in Firestore
-    await snap.ref.update({
-      notificationSentAt: admin.firestore.FieldValue.serverTimestamp(),
-    }).catch(console.error);
-
-    return null;
-  });
+        return null;
+    });

@@ -13,7 +13,6 @@ class PendingSOSScreen extends StatefulWidget {
 
 class _PendingSOSScreenState extends State<PendingSOSScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseMessaging _fcm = FirebaseMessaging.instance;
 
   final List<String> _shownAlertIds = [];
 
@@ -34,7 +33,7 @@ class _PendingSOSScreenState extends State<PendingSOSScreen> {
       for (var alert in snapshot.docs) {
         if (!_shownAlertIds.contains(alert.id)) {
           _shownAlertIds.add(alert.id);
-          _showCenteredPopup(alert.data() as Map<String, dynamic>, alert.id);
+          _showCenteredPopup(alert.data(), alert.id);
         }
       }
     });
