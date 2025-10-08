@@ -5,8 +5,12 @@ import 'package:fl_chart/fl_chart.dart';
 import '../common/side_menu.dart';
 import '../models/user_role.dart';
 import '../security/pending_sos_screen.dart';
-import '../admin/manage_users_screen.dart';
 import '../superadmin/system_analytics_screen.dart';
+import 'manage_users_screen.dart';
+import 'system_analytics_screen.dart' hide SystemAnalyticsScreen;
+import 'complaints_management_screen.dart';
+import 'department_management_screen.dart';
+import '../theme/theme.dart';
 
 class AdminDashboard extends StatefulWidget {
   final String username;
@@ -32,7 +36,7 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _getAdminDepartment();
   }
 
@@ -52,7 +56,6 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
     }
   }
 
-  // Statistics Cards
   Widget _buildStatsCard(String title, int count, Color color, IconData icon, String subtitle) {
     return Card(
       elevation: 6,
@@ -110,7 +113,6 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
     );
   }
 
-  // Quick Action Button
   Widget _buildQuickAction(String title, IconData icon, Color color, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
@@ -141,7 +143,6 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
     );
   }
 
-  // Analytics Chart
   Widget _buildComplaintsChart() {
     return Card(
       elevation: 4,
@@ -221,7 +222,6 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
     );
   }
 
-  // Emergency Alert Widget
   Widget _buildEmergencyAlert() {
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore
@@ -290,45 +290,54 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
+        backgroundColor: AppColors.offWhite,
         appBar: AppBar(
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Admin Dashboard'),
+              Text(
+                'Admin Dashboard',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: AppColors.textGrey,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               if (_adminDepartment.isNotEmpty)
                 Text(
                   _adminDepartment,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.hintGrey,
+                  ),
                 ),
             ],
           ),
-          backgroundColor: Colors.blue.shade800,
-          foregroundColor: Colors.white,
+          backgroundColor: AppColors.white,
+          elevation: 2,
+          foregroundColor: AppColors.textGrey,
           actions: [
             IconButton(
-              icon: const Icon(Icons.notifications_active),
+              icon: const Icon(Icons.notifications_outlined),
               onPressed: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => PendingSOSScreen()),
                 );
               },
-              tooltip: 'Emergency Alerts',
             ),
             IconButton(
-              icon: const Icon(Icons.analytics),
+              icon: const Icon(Icons.analytics_outlined),
               onPressed: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => SystemAnalyticsScreen()),
                 );
               },
-              tooltip: 'Analytics',
             ),
             IconButton(
-              icon: const Icon(Icons.people),
+              icon: const Icon(Icons.people_outlined),
               onPressed: () {
                 Navigator.push(
                   context,
@@ -340,43 +349,65 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
                   ),
                 );
               },
-              tooltip: 'Manage Users',
             ),
           ],
           bottom: TabBar(
             controller: _tabController,
+            labelColor: AppColors.adminPrimary,
+            unselectedLabelColor: AppColors.hintGrey,
+            indicatorColor: AppColors.adminPrimary,
             tabs: const [
-              Tab(icon: Icon(Icons.dashboard), text: 'Overview'),
-              Tab(icon: Icon(Icons.warning), text: 'Emergencies'),
-              Tab(icon: Icon(Icons.list_alt), text: 'Complaints'),
-              Tab(icon: Icon(Icons.people), text: 'Students'),
+              Tab(icon: Icon(Icons.dashboard_outlined), text: 'Overview'),
+              Tab(icon: Icon(Icons.warning_outlined), text: 'Emergencies'),
+              Tab(icon: Icon(Icons.list_alt_outlined), text: 'Complaints'),
+              Tab(icon: Icon(Icons.people_outlined), text: 'Students'),
+              Tab(icon: Icon(Icons.business_outlined), text: 'Department'),
             ],
           ),
         ),
         drawer: SideMenu(role: widget.role, username: widget.username),
-        body: TabBarView(
-          controller: _tabController,
-          children: [
-            // Tab 1: Overview
-            _buildOverviewTab(),
-
-            // Tab 2: Emergencies
-            _buildEmergenciesTab(),
-
-            // Tab 3: Complaints
-            _buildComplaintsTab(),
-
-            // Tab 4: Students
-            _buildStudentsTab(),
-          ],
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppColors.offWhite,
+                AppColors.white,
+              ],
+            ),
+          ),
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildOverviewTab(),
+              _buildEmergenciesTab(),
+              _buildComplaintsTab(),
+              _buildStudentsTab(),
+              _buildDepartmentTab(),
+            ],
+          ),
         ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () {
-            // Quick action for new complaint/alert
-            _showQuickActions(context);
-          },
-          backgroundColor: Colors.blue.shade800,
-          child: const Icon(Icons.add, color: Colors.white),
+        floatingActionButton: Container(
+          decoration: BoxDecoration(
+            gradient: AppGradients.adminGradient,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.adminPrimary.withOpacity(0.4),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: FloatingActionButton(
+            onPressed: () {
+              _showQuickActions(context);
+            },
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            child: const Icon(Icons.add, color: Colors.white),
+          ),
         ),
       ),
     );
@@ -387,10 +418,7 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Emergency Alert Banner
           _buildEmergencyAlert(),
-
-          // Quick Stats
           StreamBuilder<QuerySnapshot>(
             stream: _firestore
                 .collection('sos_alerts')
@@ -400,8 +428,7 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
               final totalAlerts = sosSnapshot.data?.docs.length ?? 0;
               final pendingAlerts = sosSnapshot.data?.docs
                   .where((doc) => doc['status'] == 'pending')
-                  .length ??
-                  0;
+                  .length ?? 0;
 
               return StreamBuilder<QuerySnapshot>(
                 stream: _firestore
@@ -412,8 +439,7 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
                   final totalComplaints = complaintSnapshot.data?.docs.length ?? 0;
                   final pendingComplaints = complaintSnapshot.data?.docs
                       .where((doc) => doc['status'] == 'pending')
-                      .length ??
-                      0;
+                      .length ?? 0;
 
                   return Column(
                     children: [
@@ -470,10 +496,7 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
               );
             },
           ),
-
           const SizedBox(height: 20),
-
-          // Quick Actions
           const Text(
             'Quick Actions',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -521,15 +544,9 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
               ),
             ],
           ),
-
           const SizedBox(height: 20),
-
-          // Analytics Chart
           _buildComplaintsChart(),
-
           const SizedBox(height: 20),
-
-          // Recent Activity
           _buildRecentActivity(),
         ],
       ),
@@ -633,7 +650,119 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
     );
   }
 
-  // Card Builders
+  Widget _buildDepartmentTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Card(
+            elevation: 4,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Department Information',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildDepartmentInfo(),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            elevation: 4,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Department Statistics',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildDepartmentStats(),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDepartmentInfo() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildInfoRow('Department Name', _adminDepartment),
+        _buildInfoRow('Total Students', _getStudentCount().toString()),
+        _buildInfoRow('Active Faculty', '12'), // Example data
+        _buildInfoRow('Department HOD', 'Dr. Smith'), // Example data
+        _buildInfoRow('Contact Email', '${_adminDepartment.toLowerCase()}@nursingcollege.edu'),
+      ],
+    );
+  }
+
+  Widget _buildDepartmentStats() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _firestore
+          .collection('users')
+          .where('department', isEqualTo: _adminDepartment)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final users = snapshot.data!.docs;
+        final students = users.where((user) => user['role'] == 'student').length;
+        final faculty = users.where((user) => user['role'] == 'faculty').length;
+        final admins = users.where((user) => user['role'] == 'admin').length;
+
+        return Column(
+          children: [
+            _buildStatItem('Total Members', users.length.toString(), Icons.people),
+            _buildStatItem('Students', students.toString(), Icons.school),
+            _buildStatItem('Faculty', faculty.toString(), Icons.person),
+            _buildStatItem('Admins', admins.toString(), Icons.admin_panel_settings),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Text(
+            '$label:',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(width: 8),
+          Text(value),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem(String label, String value, IconData icon) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.blue),
+      title: Text(label),
+      trailing: Text(
+        value,
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
   Widget _buildEmergencyCard(Map<String, dynamic> data, String alertId) {
     final status = data['status'] ?? 'pending';
     final timestamp = data['timestamp'] != null
@@ -757,7 +886,6 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-            // Add recent activity items here
             _buildActivityItem('New emergency alert reported', '2 min ago', Icons.warning, Colors.red),
             _buildActivityItem('Complaint resolved', '1 hour ago', Icons.check_circle, Colors.green),
             _buildActivityItem('New student registered', '2 hours ago', Icons.person_add, Colors.blue),
@@ -783,15 +911,12 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
     );
   }
 
-  // Helper Methods
   int _getStudentCount() {
-    // This would typically come from Firestore
-    return 45; // Example count
+    return 45;
   }
 
   int _getResponseRate() {
-    // This would typically be calculated from Firestore data
-    return 87; // Example percentage
+    return 87;
   }
 
   String _formatTime(DateTime timestamp) {
@@ -839,7 +964,6 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
     }
   }
 
-  // Dialog Methods
   void _showEmergencyDetails(BuildContext context, Map<String, dynamic> data, String alertId) {
     showDialog(
       context: context,
@@ -1009,7 +1133,15 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
               title: const Text('Add New User'),
               onTap: () {
                 Navigator.pop(context);
-                // Navigate to add user screen
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ManageUsersScreen(
+                      username: widget.username,
+                      role: widget.role,
+                    ),
+                  ),
+                );
               },
             ),
           ],
@@ -1019,7 +1151,6 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
   }
 
   void _createNewEmergency(BuildContext context) {
-    // Implement emergency creation
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1032,7 +1163,6 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
           ),
           ElevatedButton(
             onPressed: () {
-              // Create emergency logic
               Navigator.pop(context);
             },
             child: const Text('Create'),
@@ -1043,7 +1173,6 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
   }
 
   void _createNewComplaint(BuildContext context) {
-    // Implement complaint creation
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1056,7 +1185,6 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
           ),
           ElevatedButton(
             onPressed: () {
-              // Create complaint logic
               Navigator.pop(context);
             },
             child: const Text('Create'),

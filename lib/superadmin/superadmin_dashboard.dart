@@ -1,9 +1,11 @@
 // superadmin/superadmin_dashboard.dart
+import 'package:collegesafety/superadmin/student_activities_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import '../common/side_menu.dart';
+import 'incident_detail_screen.dart';
 import 'manage_users_screen.dart';
 import 'role_assignment_screen.dart';
 import 'system_analytics_screen.dart';
@@ -11,6 +13,7 @@ import 'college_management_screen.dart';
 import 'audit_log_screen.dart';
 import 'backup_management_screen.dart';
 import '../models/user_role.dart';
+import '../theme/theme.dart'; // Add this line
 
 class SuperAdminDashboard extends StatefulWidget {
   final String username;
@@ -368,7 +371,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                 return Column(
                   children: incidents.map((doc) {
                     final incident = doc.data() as Map<String, dynamic>;
-                    return _ActivityItem(incident: incident);
+                    return _ActivityItem(incident: incident, incidentId: '',);
                   }).toList(),
                 );
               },
@@ -451,6 +454,15 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     builder: (_) => BackupManagementScreen(),
                   )),
                 ),
+                // Add this to your _buildQuickActions() method in the GridView
+                _ActionCard(
+                  title: 'Student Activities',
+                  icon: Icons.monitor_heart,
+                  color: Colors.pink,
+                  onTap: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => StudentActivitiesScreen(),
+                  )),
+                ),
               ],
             ),
           ],
@@ -462,26 +474,42 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.offWhite,
       appBar: AppBar(
-        title: Text('Super Admin Dashboard'),
-        backgroundColor: Colors.purple.shade800,
-        foregroundColor: Colors.white,
-        elevation: 0,
+        title: Text(
+          'Super Admin Dashboard',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            color: AppColors.textGrey,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        backgroundColor: AppColors.white,
+        elevation: 2,
+        foregroundColor: AppColors.textGrey,
         actions: [
           IconButton(
-            icon: Icon(Icons.notifications),
+            icon: Icon(Icons.notifications_outlined),
             onPressed: () {
               // Notification center
             },
           ),
-          IconButton(
-            icon: Icon(Icons.logout),
-            onPressed: () => FirebaseAuth.instance.signOut(),
-          ),
+
         ],
       ),
-      drawer: SideMenu(role: widget.role, username: widget.username),
-      body: _buildDashboard(),
+      drawer: SideMenu(role: widget.role, username: widget.username), // This should work now
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppColors.offWhite,
+              AppColors.white,
+            ],
+          ),
+        ),
+        child: _buildDashboard(), // This should work now
+      ),
     );
   }
 }
@@ -619,10 +647,12 @@ class _UserRoleCard extends StatelessWidget {
   }
 }
 
+// In your _ActivityItem widget, make it clickable
 class _ActivityItem extends StatelessWidget {
   final Map<String, dynamic> incident;
+  final String incidentId;
 
-  const _ActivityItem({required this.incident});
+  const _ActivityItem({required this.incident, required this.incidentId});
 
   @override
   Widget build(BuildContext context) {
@@ -639,6 +669,17 @@ class _ActivityItem extends StatelessWidget {
         '${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}',
         style: TextStyle(color: Colors.grey),
       ),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => IncidentDetailScreen(
+              incidentId: incidentId,
+              incident: incident,
+            ),
+          ),
+        );
+      },
     );
   }
 }

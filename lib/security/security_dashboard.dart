@@ -1,14 +1,17 @@
-// security/security_dashboard.dart
+// lib/security/security_dashboard.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:percent_indicator/percent_indicator.dart';
-
+import 'package:vibration/vibration.dart';
+import '../common/side_menu.dart';
+import '../models/user_role.dart';
+import '../theme/theme.dart';
 // Import your screens
 import 'security_alerts_screen.dart';
 import 'security_history_screen.dart';
-import 'area_analytics_screen.dart';
 import 'response_team_screen.dart';
+import 'pending_sos_screen.dart';
+import 'security_alerts_screen.dart';
 
 class SecurityDashboard extends StatefulWidget {
   final String username;
@@ -28,46 +31,139 @@ class _SecurityDashboardState extends State<SecurityDashboard> {
   int _currentIndex = 0;
   late Stream<QuerySnapshot> _alertsStream;
   late Stream<QuerySnapshot> _incidentsStream;
+  String _securityStatus = "Available";
+  final List<String> _shownAlertIds = [];
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
     super.initState();
+    _initializeSecurityData();
+    _setupRealtimeAlerts();
+  }
+
+  void _initializeSecurityData() {
     _alertsStream = FirebaseFirestore.instance
         .collection('security_alerts')
         .where('status', isEqualTo: 'new')
+        .orderBy('timestamp', descending: true)
         .snapshots();
 
     _incidentsStream = FirebaseFirestore.instance
         .collection('incidents')
         .orderBy('timestamp', descending: true)
+        .limit(20)
         .snapshots();
+
+    // Load security status
+    _loadSecurityStatus();
   }
 
-  // Main Dashboard Screen
+  void _loadSecurityStatus() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final doc = await FirebaseFirestore.instance
+          .collection('security_status')
+          .doc(user.uid)
+          .get();
+
+      if (doc.exists) {
+        setState(() {
+          _securityStatus = doc.data()?['status'] ?? "Available";
+        });
+      }
+    }
+  }
+
+  void _setupRealtimeAlerts() {
+    FirebaseFirestore.instance
+        .collection('security_alerts')
+        .where('status', isEqualTo: 'new')
+        .snapshots()
+        .listen((snapshot) {
+      for (var doc in snapshot.docChanges) {
+        if (doc.type == DocumentChangeType.added && !_shownAlertIds.contains(doc.doc.id)) {
+          _shownAlertIds.add(doc.doc.id);
+          final data = doc.doc.data();
+          if (data != null) {
+            _showDetailedEmergencyPopup(data, doc.doc.id);
+          }
+        }
+      }
+    });
+  }
+
+  Future<void> _acknowledgeAlert(String alertId, String securityName) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+
+      await FirebaseFirestore.instance
+          .collection('security_alerts')
+          .doc(alertId)
+          .update({
+        'status': 'acknowledged',
+        'acknowledgedBy': securityName,
+        'acknowledgedByUid': user?.uid,
+        'acknowledgedAt': FieldValue.serverTimestamp(),
+        'readBy': FieldValue.arrayUnion([user?.uid]),
+      });
+
+      // Also update the incident
+      await FirebaseFirestore.instance
+          .collection('incidents')
+          .doc(alertId)
+          .update({
+        'status': 'acknowledged',
+        'acknowledgedBy': securityName,
+        'acknowledgedByUid': user?.uid,
+        'acknowledgedAt': FieldValue.serverTimestamp(),
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ Alert acknowledged by $securityName'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Error acknowledging alert: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // Main Dashboard Screen - CORRECTED
   Widget _buildDashboard() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with Welcome
+          // Header with Welcome and Status
           _buildHeader(),
+          SizedBox(height: 20),
+
+          // Quick Actions
+          _buildQuickActions(),
           SizedBox(height: 20),
 
           // Quick Stats Row
           _buildQuickStats(),
           SizedBox(height: 20),
 
+          // Security Status Section
+          _buildStatusSection(),
+          SizedBox(height: 20),
+
           // Active Alerts Section
           _buildActiveAlertsSection(),
           SizedBox(height: 20),
 
-          // Analytics Overview
-          _buildAnalyticsOverview(),
-          SizedBox(height: 20),
-
-          // Quick Actions Grid
-          _buildQuickActions(),
+          // Recent Incidents
+          _buildRecentIncidents(),
         ],
       ),
     );
@@ -89,16 +185,16 @@ class _SecurityDashboardState extends State<SecurityDashboard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Welcome, ${widget.username}!',
+            'Security Dashboard',
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 20,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
           ),
           SizedBox(height: 8),
           Text(
-            'Security Command Center',
+            'Welcome, ${widget.username}!',
             style: TextStyle(
               fontSize: 16,
               color: Colors.white70,
@@ -110,7 +206,7 @@ class _SecurityDashboardState extends State<SecurityDashboard> {
             builder: (context, snapshot) {
               final activeAlerts = snapshot.hasData ? snapshot.data!.docs.length : 0;
               return Text(
-                '$activeAlerts Active Alert${activeAlerts != 1 ? 's' : ''}',
+                '$activeAlerts Active Alert${activeAlerts != 1 ? 's' : ''} • Status: $_securityStatus',
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.white,
@@ -124,12 +220,89 @@ class _SecurityDashboardState extends State<SecurityDashboard> {
     );
   }
 
+  // Quick Actions Section
+  Widget _buildQuickActions() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '⚡ Quick Actions',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 16),
+            GridView.count(
+              shrinkWrap: true,
+              physics: NeverScrollableScrollPhysics(),
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              children: [
+                _QuickActionCard(
+                  title: 'Send Alert',
+                  icon: Icons.warning,
+                  color: Colors.red,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => SecurityAlertsScreen()),
+                    );
+                  },
+                ),
+                _QuickActionCard(
+                  title: 'Team Status',
+                  icon: Icons.people,
+                  color: Colors.blue,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => ResponseTeamScreen()),
+                    );
+                  },
+                ),
+                _QuickActionCard(
+                  title: 'Live Incidents',
+                  icon: Icons.live_tv,
+                  color: Colors.orange,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => PendingSOSScreen()),
+                    );
+                  },
+                ),
+                _QuickActionCard(
+                  title: 'History',
+                  icon: Icons.history,
+                  color: Colors.green,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => SecurityHistoryScreen()),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildQuickStats() {
     return StreamBuilder<QuerySnapshot>(
       stream: _incidentsStream,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          return Center(child: CircularProgressIndicator());
+          return _buildDataUnavailable('Quick Stats');
         }
 
         final incidents = snapshot.data!.docs;
@@ -190,11 +363,71 @@ class _SecurityDashboardState extends State<SecurityDashboard> {
     );
   }
 
+  Widget _buildStatusSection() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '🛡️ Security Status',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _StatusButton(
+                  status: "Available",
+                  currentStatus: _securityStatus,
+                  icon: Icons.check_circle,
+                  color: Colors.green,
+                  onTap: () => _updateStatus("Available"),
+                ),
+                _StatusButton(
+                  status: "On My Way",
+                  currentStatus: _securityStatus,
+                  icon: Icons.directions_run,
+                  color: Colors.blue,
+                  onTap: () => _updateStatus("On My Way"),
+                ),
+                _StatusButton(
+                  status: "Busy",
+                  currentStatus: _securityStatus,
+                  icon: Icons.do_not_disturb,
+                  color: Colors.orange,
+                  onTap: () => _updateStatus("Busy"),
+                ),
+                _StatusButton(
+                  status: "Off Duty",
+                  currentStatus: _securityStatus,
+                  icon: Icons.offline_bolt,
+                  color: Colors.red,
+                  onTap: () => _updateStatus("Off Duty"),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildActiveAlertsSection() {
     return StreamBuilder<QuerySnapshot>(
       stream: _alertsStream,
       builder: (context, snapshot) {
-        final alerts = snapshot.hasData ? snapshot.data!.docs : [];
+        if (!snapshot.hasData) {
+          return _buildDataUnavailable('Active Alerts');
+        }
+
+        final alerts = snapshot.data!.docs;
         final alertCount = alerts.length;
 
         return Card(
@@ -205,7 +438,6 @@ class _SecurityDashboardState extends State<SecurityDashboard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header with count
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -241,14 +473,11 @@ class _SecurityDashboardState extends State<SecurityDashboard> {
                 ),
                 SizedBox(height: 12),
 
-                if (!snapshot.hasData)
-                  Center(child: CircularProgressIndicator())
-                else if (alertCount == 0)
+                if (alertCount == 0)
                   _buildNoAlertsState()
                 else
                   Column(
                     children: [
-                      // Alert list (max 3 items)
                       ...alerts.take(3).map((doc) {
                         final alert = doc.data() as Map<String, dynamic>;
                         return _ActiveAlertItem(
@@ -260,7 +489,6 @@ class _SecurityDashboardState extends State<SecurityDashboard> {
                         );
                       }).toList(),
 
-                      // View All button if more than 3 alerts
                       if (alertCount > 3)
                         Padding(
                           padding: EdgeInsets.only(top: 12),
@@ -270,7 +498,7 @@ class _SecurityDashboardState extends State<SecurityDashboard> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => SecurityAlertsScreen(),
+                                    builder: (context) => PendingSOSScreen(),
                                   ),
                                 );
                               },
@@ -290,6 +518,106 @@ class _SecurityDashboardState extends State<SecurityDashboard> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildRecentIncidents() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _incidentsStream,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return _buildDataUnavailable('Recent Incidents');
+        }
+
+        final incidents = snapshot.data!.docs.take(5).toList();
+
+        return Card(
+          elevation: 4,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.history, color: Colors.blue, size: 24),
+                    SizedBox(width: 8),
+                    Text(
+                      'Recent Incidents',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 12),
+
+                if (incidents.isEmpty)
+                  _buildEmptyState('No recent incidents')
+                else
+                  Column(
+                    children: incidents.map((doc) {
+                      final incident = doc.data() as Map<String, dynamic>;
+                      return _RecentIncidentItem(incident: incident);
+                    }).toList(),
+                  ),
+
+                SizedBox(height: 8),
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => SecurityHistoryScreen()),
+                      );
+                    },
+                    icon: Icon(Icons.arrow_forward),
+                    label: Text('View Full History'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Helper methods for empty states
+  Widget _buildDataUnavailable(String title) {
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Icon(Icons.signal_wifi_off, size: 48, color: Colors.grey),
+            SizedBox(height: 8),
+            Text(
+              '$title Unavailable',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(String message) {
+    return Container(
+      padding: EdgeInsets.all(20),
+      child: Column(
+        children: [
+          Icon(Icons.inbox, size: 48, color: Colors.grey.shade400),
+          SizedBox(height: 8),
+          Text(
+            message,
+            style: TextStyle(color: Colors.grey.shade600),
+          ),
+        ],
+      ),
     );
   }
 
@@ -323,308 +651,166 @@ class _SecurityDashboardState extends State<SecurityDashboard> {
     );
   }
 
-  Widget _buildAnalyticsOverview() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _incidentsStream,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return Card(
-            elevation: 4,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          );
-        }
-
-        final incidents = snapshot.data!.docs;
-        final totalIncidents = incidents.length;
-        final resolvedCount = incidents.where((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          return data['status'] == 'resolved';
-        }).length;
-
-        final responseRate = totalIncidents > 0 ? (resolvedCount / totalIncidents) : 0.0;
-
-        return Card(
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '📊 Analytics Overview',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        children: [
-                          CircularPercentIndicator(
-                            radius: 40,
-                            lineWidth: 8,
-                            percent: responseRate,
-                            center: Text(
-                              '${(responseRate * 100).toInt()}%',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                            ),
-                            progressColor: Colors.green,
-                            backgroundColor: Colors.green.shade100,
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Response\nRate',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          CircularPercentIndicator(
-                            radius: 40,
-                            lineWidth: 8,
-                            percent: 0.75,
-                            center: Text(
-                              '8min',
-                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                            progressColor: Colors.blue,
-                            backgroundColor: Colors.blue.shade100,
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Avg Response\nTime',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 60,
-                            height: 60,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.orange, width: 4),
-                            ),
-                            child: Center(
-                              child: Text(
-                                resolvedCount.toString(),
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange),
-                              ),
-                            ),
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Resolved\nTotal',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => AreaAnalyticsScreen(),
-                      ),
-                    );
-                  },
-                  icon: Icon(Icons.analytics),
-                  label: Text('View Detailed Analytics'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade50,
-                    foregroundColor: Colors.blue.shade800,
-                    minimumSize: Size(double.infinity, 50),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildQuickActions() {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '⚡ Quick Actions',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 16),
-            GridView.count(
-              shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              children: [
-                _ActionCard(
-                  title: 'Active Alerts',
-                  icon: Icons.warning,
-                  color: Colors.red,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => SecurityAlertsScreen())),
-                ),
-                _ActionCard(
-                  title: 'Incident History',
-                  icon: Icons.history,
-                  color: Colors.blue,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => SecurityHistoryScreen())),
-                ),
-                _ActionCard(
-                  title: 'Area Analytics',
-                  icon: Icons.analytics,
-                  color: Colors.green,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => AreaAnalyticsScreen())),
-                ),
-                _ActionCard(
-                  title: 'Response Team',
-                  icon: Icons.people,
-                  color: Colors.orange,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ResponseTeamScreen())),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _handleAlertTap(Map<String, dynamic> alert, String alertId) {
-    _showEmergencyPopup(alert, alertId);
+    _showDetailedEmergencyPopup(alert, alertId);
   }
 
-  void _showEmergencyPopup(Map<String, dynamic> alert, String alertId) {
+  void _showDetailedEmergencyPopup(Map<String, dynamic> alert, String alertId) async {
+    // Vibrate for emergency
+    if (await Vibration.hasVibrator() ?? false) {
+      Vibration.vibrate(pattern: [0, 1000, 500, 1000]);
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.red[50],
-        title: Row(
-          children: [
-            Icon(Icons.warning, color: Colors.red),
-            SizedBox(width: 10),
-            Text('🚨 EMERGENCY SOS'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Student: ${alert['studentName']}', style: TextStyle(fontWeight: FontWeight.bold)),
-            SizedBox(height: 8),
-            Text('Location: ${alert['location']}'),
-            SizedBox(height: 8),
-            Text('Type: ${alert['type']}'),
-            if (alert['description'] != null) ...[
-              SizedBox(height: 8),
-              Text('Description: ${alert['description']}'),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('MINIMIZE'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              _acknowledgeAlert(alertId);
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: Text('ACKNOWLEDGE', style: TextStyle(color: Colors.white)),
-          ),
-        ],
+      barrierColor: Colors.black54,
+      builder: (context) => EmergencyAlertDialog(
+        alert: alert,
+        alertId: alertId,
+        securityName: widget.username,
+        onAcknowledge: () => _acknowledgeAlert(alertId, widget.username),
+        onResolve: () => _resolveAlert(alertId, widget.username),
+        alertData: {},
+        incidentId: '',
       ),
     );
   }
 
-  Future<void> _acknowledgeAlert(String alertId) async {
+  Future<void> _resolveAlert(String alertId, String securityName) async {
     try {
+      final user = FirebaseAuth.instance.currentUser;
+
       await FirebaseFirestore.instance
           .collection('security_alerts')
           .doc(alertId)
           .update({
-        'status': 'acknowledged',
-        'acknowledgedAt': FieldValue.serverTimestamp(),
+        'status': 'resolved',
+        'resolvedBy': securityName,
+        'resolvedByUid': user?.uid,
+        'resolvedAt': FieldValue.serverTimestamp(),
+        'readBy': FieldValue.arrayUnion([user?.uid]),
+      });
+
+      // Also update the incident
+      await FirebaseFirestore.instance
+          .collection('incidents')
+          .doc(alertId)
+          .update({
+        'status': 'resolved',
+        'resolvedBy': securityName,
+        'resolvedByUid': user?.uid,
+        'resolvedAt': FieldValue.serverTimestamp(),
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ Alert acknowledged'),
+          content: Text('✅ Alert resolved by $securityName'),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('❌ Error: $e'),
+          content: Text('❌ Error resolving alert: $e'),
           backgroundColor: Colors.red,
         ),
       );
     }
   }
 
+  Future<void> _updateStatus(String newStatus) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('security_status')
+          .doc(user.uid)
+          .set({
+        'status': newStatus,
+        'name': widget.username,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'userId': user.uid,
+      });
+
+      setState(() {
+        _securityStatus = newStatus;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Status updated to $newStatus'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to update status: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _logout() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      Navigator.pushReplacementNamed(context, '/login');
+    } catch (e) {
+      print('Logout error: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       appBar: AppBar(
         title: Text('Security Dashboard'),
         backgroundColor: Colors.blue.shade800,
         foregroundColor: Colors.white,
         elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.menu),
+          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+        ),
         actions: [
           IconButton(
             icon: Icon(Icons.notifications),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => SecurityAlertsScreen()),
-              );
+              setState(() {
+                _currentIndex = 1; // Navigate to Alerts screen
+              });
             },
           ),
-          IconButton(
-            icon: Icon(Icons.logout),
-            onPressed: () => FirebaseAuth.instance.signOut(),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'logout') {
+                _logout();
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'logout',
+                child: Text('Logout'),
+              ),
+            ],
           ),
         ],
       ),
-      body: _currentIndex == 0 ? _buildDashboard() : SecurityAlertsScreen(),
+      drawer: SideMenu(
+        role: UserRole.security,
+        username: widget.username,
+      ),
+      body: _getCurrentScreen(),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: Colors.blue.shade800,
+        unselectedItemColor: Colors.grey,
         items: [
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard),
@@ -634,7 +820,78 @@ class _SecurityDashboardState extends State<SecurityDashboard> {
             icon: Icon(Icons.warning),
             label: 'Alerts',
           ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.people),
+            label: 'Team',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.history),
+            label: 'History',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.analytics),
+            label: 'Analytics',
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _getCurrentScreen() {
+    switch (_currentIndex) {
+      case 0:
+        return _buildDashboard();
+      case 1:
+        return PendingSOSScreen();
+      case 2:
+        return ResponseTeamScreen();
+      case 3:
+        return SecurityHistoryScreen();
+      default:
+        return _buildDashboard();
+    }
+  }
+}
+
+// Quick Action Card Widget
+class _QuickActionCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _QuickActionCard({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 2,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 32, color: color),
+              SizedBox(height: 8),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -709,6 +966,48 @@ class _StatCard extends StatelessWidget {
   }
 }
 
+class _StatusButton extends StatelessWidget {
+  final String status;
+  final String currentStatus;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _StatusButton({
+    required this.status,
+    required this.currentStatus,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isSelected = currentStatus == status;
+
+    return Column(
+      children: [
+        IconButton(
+          icon: Icon(icon),
+          color: isSelected ? color : Colors.grey,
+          iconSize: 28,
+          onPressed: onTap,
+        ),
+        Text(
+          status,
+          style: TextStyle(
+            fontSize: 10,
+            color: isSelected ? color : Colors.grey,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+}
+
+// Active Alert Item with Priority
 class _ActiveAlertItem extends StatelessWidget {
   final Map<String, dynamic> alert;
   final String alertId;
@@ -724,10 +1023,12 @@ class _ActiveAlertItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final timestamp = (alert['timestamp'] as Timestamp).toDate();
     final timeAgo = _getTimeAgo(timestamp);
+    final priority = _getPriorityLevel(alert);
+    final priorityColor = _getPriorityColor(priority);
 
     return Card(
       margin: EdgeInsets.only(bottom: 8),
-      color: Colors.red.shade50,
+      color: priorityColor.withOpacity(0.1),
       elevation: 2,
       child: ListTile(
         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -735,10 +1036,10 @@ class _ActiveAlertItem extends StatelessWidget {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: Colors.red.shade100,
+            color: priorityColor.withOpacity(0.2),
             shape: BoxShape.circle,
           ),
-          child: Icon(Icons.warning, color: Colors.red, size: 20),
+          child: Icon(Icons.warning, color: priorityColor, size: 20),
         ),
         title: Text(
           alert['studentName'] ?? 'Unknown Student',
@@ -773,6 +1074,22 @@ class _ActiveAlertItem extends StatelessWidget {
                   timeAgo,
                   style: TextStyle(fontSize: 11, color: Colors.grey),
                 ),
+                SizedBox(width: 8),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: priorityColor,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    priority.toUpperCase(),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               ],
             ),
           ],
@@ -806,47 +1123,236 @@ class _ActiveAlertItem extends StatelessWidget {
     if (difference.inHours < 24) return '${difference.inHours}h ago';
     return '${difference.inDays}d ago';
   }
+
+  String _getPriorityLevel(Map<String, dynamic> alert) {
+    final type = (alert['type'] ?? '').toString().toLowerCase();
+    final priority = (alert['priority'] ?? 'medium').toString().toLowerCase();
+
+    if (priority != 'medium') return priority;
+
+    if (type.contains('medical') || type.contains('shooter') || type.contains('fire')) {
+      return 'high';
+    } else if (type.contains('security') || type.contains('threat')) {
+      return 'high';
+    } else if (type.contains('suspicious') || type.contains('harassment')) {
+      return 'medium';
+    } else {
+      return 'low';
+    }
+  }
+
+  Color _getPriorityColor(String priority) {
+    switch (priority) {
+      case 'high': return Colors.red;
+      case 'medium': return Colors.orange;
+      case 'low': return Colors.blue;
+      default: return Colors.grey;
+    }
+  }
 }
 
-class _ActionCard extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
+// Recent Incident Item with Response Time
+class _RecentIncidentItem extends StatelessWidget {
+  final Map<String, dynamic> incident;
 
-  const _ActionCard({
-    required this.title,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
+  const _RecentIncidentItem({required this.incident});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 2,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 32, color: color),
-              SizedBox(height: 8),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 12,
-                ),
-              ),
-            ],
+    final timestamp = (incident['timestamp'] as Timestamp).toDate();
+    final status = incident['status'] ?? 'pending';
+    final responseTime = _calculateResponseTime(incident);
+
+    return ListTile(
+      contentPadding: EdgeInsets.symmetric(vertical: 4),
+      leading: Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(
+          color: _getStatusColor(status),
+          shape: BoxShape.circle,
+        ),
+      ),
+      title: Text(
+        incident['type'] ?? 'Incident',
+        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${incident['location']} • ${_formatTime(timestamp)}',
+            style: TextStyle(fontSize: 12),
           ),
+          if (responseTime != null) ...[
+            SizedBox(height: 2),
+            Text(
+              'Response: $responseTime',
+              style: TextStyle(
+                fontSize: 10,
+                color: _getResponseTimeColor(responseTime),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ],
+      ),
+      trailing: Text(
+        status.toUpperCase(),
+        style: TextStyle(
+          fontSize: 10,
+          color: _getStatusColor(status),
+          fontWeight: FontWeight.bold,
         ),
       ),
     );
   }
+
+  String? _calculateResponseTime(Map<String, dynamic> incident) {
+    if (incident['acknowledgedAt'] != null) {
+      final reportedAt = (incident['timestamp'] as Timestamp).toDate();
+      final acknowledgedAt = (incident['acknowledgedAt'] as Timestamp).toDate();
+      final minutes = acknowledgedAt.difference(reportedAt).inMinutes;
+      return '${minutes}m';
+    }
+    return null;
+  }
+
+  Color _getResponseTimeColor(String responseTime) {
+    final minutes = int.tryParse(responseTime.replaceAll('m', '')) ?? 0;
+    if (minutes < 5) return Colors.green;
+    if (minutes < 15) return Colors.orange;
+    return Colors.red;
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'pending': return Colors.orange;
+      case 'acknowledged': return Colors.blue;
+      case 'resolved': return Colors.green;
+      default: return Colors.grey;
+    }
+  }
+
+  String _formatTime(DateTime date) {
+    return '${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+  }
 }
+
+class EmergencyAlertDialog extends StatelessWidget {
+  final Map<String, dynamic> alert;
+  final String alertId;
+  final String securityName;
+  final VoidCallback onAcknowledge; // Changed to VoidCallback
+  final VoidCallback onResolve;     // Changed to VoidCallback
+  final Map<String, dynamic> alertData;
+  final String incidentId;
+
+  const EmergencyAlertDialog({
+    Key? key,
+    required this.alert,
+    required this.alertId,
+    required this.securityName,
+    required this.onAcknowledge,
+    required this.onResolve,
+    required this.alertData,
+    required this.incidentId,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final timestamp = (alert['timestamp'] as Timestamp).toDate();
+    final timeAgo = _getTimeAgo(timestamp);
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.warning, color: Colors.red, size: 32),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '🚨 EMERGENCY ALERT',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
+
+            Text(
+              'Student: ${alert['studentName'] ?? 'Unknown'}',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+
+            Text('Location: ${alert['location'] ?? 'Unknown'}'),
+            SizedBox(height: 8),
+
+            Text('Type: ${alert['type'] ?? 'Emergency'}'),
+            SizedBox(height: 8),
+
+            Text('Time: $timeAgo'),
+            SizedBox(height: 16),
+
+            if (alert['additionalInfo'] != null) ...[
+              Text('Additional Info: ${alert['additionalInfo']}'),
+              SizedBox(height: 16),
+            ],
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: onAcknowledge, // Now uses VoidCallback directly
+                    icon: Icon(Icons.check_circle),
+                    label: Text('Acknowledge'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: onResolve, // Now uses VoidCallback directly
+                    icon: Icon(Icons.verified),
+                    label: Text('Resolve'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getTimeAgo(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inMinutes < 1) return 'Just now';
+    if (difference.inMinutes < 60) return '${difference.inMinutes}m ago';
+    if (difference.inHours < 24) return '${difference.inHours}h ago';
+    return '${difference.inDays}d ago';
+  }
+}
+// Keep your existing EmergencyAlertDialog class as it is
+// ... (your existing EmergencyAlertDialog code remains the same)

@@ -1,61 +1,113 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+// lib/services/auth_service.dart
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AuthService {
-  final _auth = FirebaseAuth.instance;
-  final _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  Future<User?> register({
-    required String email,
-    required String password,
-    required String role,
-  }) async {
-    final cred = await _auth.createUserWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
-
-    final uid = cred.user!.uid;
-    String? token = await FirebaseMessaging.instance.getToken();
-
-    await _db.collection('users').doc(uid).set({
-      'email': email,
-      'role': role,
-      'approved': role == "student" ? true : false, // students auto-approved
-      'createdAt': FieldValue.serverTimestamp(),
-      'fcmToken': token,
-    });
-
-    return cred.user;
-  }
-
+  // Login with email and password
   Future<User?> login(String email, String password) async {
-    final cred = await _auth.signInWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
-
-    // Update FCM token on login
-    String? token = await FirebaseMessaging.instance.getToken();
-    await _db.collection('users').doc(cred.user!.uid).update({
-      'fcmToken': token,
-    });
-
-    return cred.user;
+    try {
+      UserCredential credential = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      return credential.user;
+    } on FirebaseAuthException catch (e) {
+      throw FirebaseAuthException(code: e.code, message: e.message);
+    }
   }
 
-  Future<String?> getUserRole(String uid) async {
-    final snap = await _db.collection('users').doc(uid).get();
-    return snap.data()?['role'];
+  // Register new user
+  Future<User?> register(String email, String password, String name, String role) async {
+    try {
+      UserCredential credential = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      // Create user document in Firestore
+      await _firestore.collection('users').doc(credential.user!.uid).set({
+        'uid': credential.user!.uid,
+        'name': name,
+        'email': email,
+        'role': role,
+        'approved': role == 'security' ? true : false, // Auto-approve security
+        'createdAt': FieldValue.serverTimestamp(),
+        'college': '',
+        'section': '',
+        'phone': '',
+      });
+
+      return credential.user;
+    } on FirebaseAuthException catch (e) {
+      throw FirebaseAuthException(code: e.code, message: e.message);
+    }
   }
 
+  // Get user role
+  Future<String> getUserRole(String uid) async {
+    try {
+      DocumentSnapshot doc = await _firestore.collection('users').doc(uid).get();
+      if (doc.exists) {
+        return doc['role'] ?? 'student';
+      }
+      return 'student';
+    } catch (e) {
+      return 'student';
+    }
+  }
+
+  // Check if user is approved
   Future<bool> isApproved(String uid) async {
-    final snap = await _db.collection('users').doc(uid).get();
-    return snap.data()?['approved'] ?? false;
+    try {
+      DocumentSnapshot doc = await _firestore.collection('users').doc(uid).get();
+      if (doc.exists) {
+        final role = doc['role'] ?? 'student';
+        // Auto-approve security and admin roles
+        if (role == 'security' || role == 'admin' || role == 'superadmin') {
+          return true;
+        }
+        return doc['approved'] ?? false;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
   }
 
+  // Logout
   Future<void> logout() async {
     await _auth.signOut();
+  }
+
+  // Get current user data
+  Future<Map<String, dynamic>?> getCurrentUserData() async {
+    User? user = _auth.currentUser;
+    if (user != null) {
+      DocumentSnapshot doc = await _firestore.collection('users').doc(user.uid).get();
+      if (doc.exists) {
+        return doc.data() as Map<String, dynamic>;
+      }
+    }
+    return null;
+  }
+
+  // Check if profile is complete
+  Future<bool> isProfileComplete(String uid) async {
+    try {
+      DocumentSnapshot doc = await _firestore.collection('users').doc(uid).get();
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        return data['age'] != null &&
+            data['age'].toString().isNotEmpty &&
+            data['college'] != null &&
+            data['college'].toString().isNotEmpty;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
   }
 }

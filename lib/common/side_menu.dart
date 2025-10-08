@@ -1,7 +1,16 @@
+//lib/common/side_menu.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user_role.dart';
 import '../admin/manage_users_screen.dart';
+import '../student/student_complaints_screen.dart';
+import '../student/student_courses_screen.dart';
+import '../student/student_history_screen.dart';
+import '../student/student_profile_screen.dart';
+import '../student/student_reports_screen.dart';
+import '../student/student_schedule_screen.dart';
+import '../student/student_sos_screen.dart';
+import '../superadmin/student_activities_screen.dart';
 import '../superadmin/superadmin_dashboard.dart';
 import '../security/pending_sos_screen.dart';
 import '../student/student_dashboard.dart';
@@ -121,6 +130,16 @@ class SideMenu extends StatelessWidget {
               );
             },
           ),
+          ListTile(
+            leading: Icon(Icons.monitor_heart),
+            title: Text('Student Activities'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => StudentActivitiesScreen(),
+              ));
+            },
+          ),
         ]);
         break;
 
@@ -153,6 +172,16 @@ class SideMenu extends StatelessWidget {
             onTap: () {
               Navigator.pop(context);
               // TODO: Add All Complaints screen navigation
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.monitor_heart),
+            title: Text('Student Activities'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => StudentActivitiesScreen(),
+              ));
             },
           ),
         ]);
@@ -194,33 +223,63 @@ class SideMenu extends StatelessWidget {
               );
             },
           ),
+          ListTile(
+            leading: Icon(Icons.monitor_heart),
+            title: Text('Student Activities'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => StudentActivitiesScreen(),
+              ));
+            },
+          ),
         ]);
         break;
 
       case UserRole.student:
         roleSpecificItems.addAll([
           ListTile(
-            leading: const Icon(Icons.report_problem),
-            title: const Text('Report Complaint'),
+            leading: const Icon(Icons.warning),
+            title: const Text('Emergency SOS'),
             onTap: () {
               Navigator.pop(context);
-              // TODO: Add Report Complaint screen navigation
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const StudentSosScreen()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.report),
+            title: const Text('File Report'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => StudentReportsScreen()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.feedback),
+            title: const Text('My Complaints'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => StudentComplaintsScreen()),
+              );
             },
           ),
           ListTile(
             leading: const Icon(Icons.history),
-            title: const Text('My Complaints'),
+            title: const Text('Incident History'),
             onTap: () {
               Navigator.pop(context);
-              // TODO: Add My Complaints screen navigation
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.sos),
-            title: const Text('Emergency SOS'),
-            onTap: () {
-              Navigator.pop(context);
-              // TODO: Add Emergency SOS screen navigation
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => StudentHistoryScreen()),
+              );
             },
           ),
           ListTile(
@@ -228,7 +287,10 @@ class SideMenu extends StatelessWidget {
             title: const Text('My Courses'),
             onTap: () {
               Navigator.pop(context);
-              // TODO: Add My Courses screen navigation
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => StudentCoursesScreen()),
+              );
             },
           ),
           ListTile(
@@ -236,9 +298,25 @@ class SideMenu extends StatelessWidget {
             title: const Text('My Schedule'),
             onTap: () {
               Navigator.pop(context);
-              // TODO: Add My Schedule screen navigation
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => StudentScheduleScreen()),
+              );
             },
           ),
+          ListTile(
+            leading: const Icon(Icons.person),
+            title: const Text('Profile'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => StudentProfileScreen()),
+              );
+            },
+          ),
+          // Add to your side menu items
+
         ]);
         break;
     }

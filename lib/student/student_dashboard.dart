@@ -12,6 +12,8 @@ import 'student_history_screen.dart';
 import 'student_profile_screen.dart';
 import '../common/side_menu.dart';
 import '../models/user_role.dart';
+import 'student_courses_screen.dart';
+import 'student_schedule_screen.dart';
 
 class StudentDashboard extends StatefulWidget {
   final String username;
@@ -340,31 +342,50 @@ class _StudentDashboardState extends State<StudentDashboard> {
                   title: 'Emergency SOS',
                   icon: Icons.warning,
                   color: Colors.red,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StudentSosScreen())),
+                  onTap: () => _navigateToScreen(const StudentSosScreen()),
                 ),
                 _ActionCard(
                   title: 'File Report',
                   icon: Icons.report,
                   color: Colors.blue,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StudentReportsScreen())),
+                  onTap: () => _navigateToScreen(StudentReportsScreen()),
                 ),
                 _ActionCard(
                   title: 'Complaints',
                   icon: Icons.feedback,
                   color: Colors.orange,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StudentComplaintsScreen())),
+                  onTap: () => _navigateToScreen(StudentComplaintsScreen()),
                 ),
                 _ActionCard(
                   title: 'History',
                   icon: Icons.history,
                   color: Colors.green,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StudentHistoryScreen())),
+                  onTap: () => _navigateToScreen(StudentHistoryScreen()),
+                ),
+                _ActionCard(
+                  title: 'My Courses',
+                  icon: Icons.book,
+                  color: Colors.purple,
+                  onTap: () => _navigateToScreen(StudentCoursesScreen()),
+                ),
+                _ActionCard(
+                  title: 'Schedule',
+                  icon: Icons.schedule,
+                  color: Colors.teal,
+                  onTap: () => _navigateToScreen(StudentScheduleScreen()),
                 ),
               ],
             ),
           ],
         ),
       ),
+    );
+  }
+
+  void _navigateToScreen(Widget screen) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => screen),
     );
   }
 
@@ -389,28 +410,51 @@ class _StudentDashboardState extends State<StudentDashboard> {
         ],
       ),
       drawer: SideMenu(role: widget.role, username: widget.username),
-      body: _currentIndex == 0 ? _buildDashboard() : _buildOtherScreens(),
+      body: _getCurrentScreen(),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: Colors.blue.shade800,
+        unselectedItemColor: Colors.grey,
         items: [
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard),
             label: 'Dashboard',
           ),
           BottomNavigationBarItem(
+            icon: Icon(Icons.report),
+            label: 'Reports',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.feedback),
+            label: 'Complaints',
+          ),
+          BottomNavigationBarItem(
             icon: Icon(Icons.history),
             label: 'History',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.book),
+            label: 'Courses',
           ),
         ],
       ),
     );
   }
 
-  Widget _buildOtherScreens() {
+  Widget _getCurrentScreen() {
     switch (_currentIndex) {
+      case 0:
+        return _buildDashboard();
       case 1:
+        return StudentReportsScreen();
+      case 2:
+        return StudentComplaintsScreen();
+      case 3:
         return StudentHistoryScreen();
+      case 4:
+        return StudentCoursesScreen();
       default:
         return _buildDashboard();
     }

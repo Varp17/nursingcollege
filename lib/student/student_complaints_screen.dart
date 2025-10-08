@@ -15,15 +15,16 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
   final TextEditingController _complaintController = TextEditingController();
   final TextEditingController _suggestionController = TextEditingController();
 
-  String _selectedType = 'General Complaint';
+  String _selectedType = 'Academic';
   bool _isSubmitting = false;
 
   final List<String> _complaintTypes = [
-    'General Complaint',
-    'Faculty Issue',
-    'Infrastructure',
-    'Administrative',
     'Academic',
+    'Administrative',
+    'Infrastructure',
+    'Faculty',
+    'Canteen',
+    'Transport',
     'Other'
   ];
 
@@ -34,14 +35,28 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
 
     try {
       final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('User not logged in');
+
+      // Get user data for additional fields
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      final userData = userDoc.data() ?? {};
+
       await FirebaseFirestore.instance.collection('complaints').add({
-        'studentUid': user?.uid,
-        'studentName': user?.displayName ?? 'Student',
+        'studentUid': user.uid,
+        'studentName': userData['name'] ?? 'Student',
         'type': _selectedType,
         'complaint': _complaintController.text,
-        'suggestion': _suggestionController.text.isNotEmpty ? _suggestionController.text : null,
+        'suggestion': _suggestionController.text.isEmpty ? null : _suggestionController.text,
         'status': 'pending',
         'timestamp': FieldValue.serverTimestamp(),
+        'section': userData['section'],
+        'college': userData['college'],
+        'department': userData['department'],
+        'createdAt': FieldValue.serverTimestamp(),
       });
 
       // Clear form
@@ -52,13 +67,16 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
         SnackBar(
           content: Text('✅ Complaint submitted successfully'),
           backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
         ),
       );
     } catch (e) {
+      print('Error submitting complaint: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('❌ Failed to submit complaint: $e'),
+          content: Text('❌ Failed to submit complaint. Please try again.'),
           backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
         ),
       );
     } finally {
@@ -67,10 +85,17 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
   }
 
   @override
+  void dispose() {
+    _complaintController.dispose();
+    _suggestionController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Submit Complaint'),
+        title: Text('File Complaint'),
         backgroundColor: Colors.orange.shade800,
         foregroundColor: Colors.white,
       ),
@@ -81,8 +106,17 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
           child: ListView(
             children: [
               Text(
-                'Submit a Complaint',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                'File a Complaint',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange.shade800,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Share your concerns and suggestions for improvement',
+                style: TextStyle(color: Colors.grey.shade600),
               ),
               SizedBox(height: 20),
 
@@ -92,6 +126,8 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                 decoration: InputDecoration(
                   labelText: 'Complaint Type',
                   border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
                 ),
                 items: _complaintTypes.map((type) {
                   return DropdownMenuItem(
@@ -106,15 +142,20 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
               // Complaint Details
               TextFormField(
                 controller: _complaintController,
-                maxLines: 4,
+                maxLines: 5,
                 decoration: InputDecoration(
                   labelText: 'Complaint Details',
                   border: OutlineInputBorder(),
                   alignLabelWithHint: true,
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please describe your complaint';
+                  }
+                  if (value.length < 10) {
+                    return 'Please provide more details (at least 10 characters)';
                   }
                   return null;
                 },
@@ -126,9 +167,11 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                 controller: _suggestionController,
                 maxLines: 3,
                 decoration: InputDecoration(
-                  labelText: 'Suggestions (Optional)',
+                  labelText: 'Suggestions for Improvement (Optional)',
                   border: OutlineInputBorder(),
                   alignLabelWithHint: true,
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
                 ),
               ),
               SizedBox(height: 24),
@@ -137,20 +180,33 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
               ElevatedButton(
                 onPressed: _isSubmitting ? null : _submitComplaint,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
+                  backgroundColor: Colors.orange.shade800,
                   foregroundColor: Colors.white,
                   padding: EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
                 child: _isSubmitting
                     ? Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    ),
                     SizedBox(width: 12),
                     Text('Submitting...'),
                   ],
                 )
-                    : Text('Submit Complaint'),
+                    : Text(
+                  'Submit Complaint',
+                  style: TextStyle(fontSize: 16),
+                ),
               ),
             ],
           ),

@@ -38,6 +38,8 @@ class _StudentHistoryScreenState extends State<StudentHistoryScreen> {
               decoration: InputDecoration(
                 labelText: 'Filter by Type',
                 border: OutlineInputBorder(),
+                filled: true,
+                fillColor: Colors.grey.shade50,
               ),
               items: _filters.map((filter) {
                 return DropdownMenuItem(
@@ -60,22 +62,53 @@ class _StudentHistoryScreenState extends State<StudentHistoryScreen> {
 
   Widget _buildHistoryList() {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return Center(child: Text('Please login'));
+    if (user == null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text('Please login to view history'),
+          ],
+        ),
+      );
+    }
+
+    // Determine which collection to query based on filter
+    CollectionReference collection;
+    String documentType;
+
+    switch (_selectedFilter) {
+      case 'incidents':
+        collection = FirebaseFirestore.instance.collection('incidents');
+        documentType = 'incident';
+        break;
+      case 'reports':
+        collection = FirebaseFirestore.instance.collection('reports');
+        documentType = 'report';
+        break;
+      case 'complaints':
+        collection = FirebaseFirestore.instance.collection('complaints');
+        documentType = 'complaint';
+        break;
+      default:
+      // For 'all', we'll show incidents by default
+        collection = FirebaseFirestore.instance.collection('incidents');
+        documentType = 'incident';
+    }
 
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('incidents')
+      stream: collection
           .where('studentUid', isEqualTo: user.uid)
           .orderBy('timestamp', descending: true)
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return Center(child: CircularProgressIndicator());
         }
 
-        final incidents = snapshot.data!.docs;
-
-        if (incidents.isEmpty) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -86,19 +119,24 @@ class _StudentHistoryScreenState extends State<StudentHistoryScreen> {
                   'No history yet',
                   style: TextStyle(fontSize: 18, color: Colors.grey),
                 ),
-                Text('Your reports will appear here'),
+                Text('Your ${_filters.firstWhere((f) => f['value'] == _selectedFilter)['label']!.toLowerCase()} will appear here'),
               ],
             ),
           );
         }
 
+        final documents = snapshot.data!.docs;
+
         return ListView.builder(
           padding: EdgeInsets.all(16),
-          itemCount: incidents.length,
+          itemCount: documents.length,
           itemBuilder: (context, index) {
-            final doc = incidents[index];
-            final incident = doc.data() as Map<String, dynamic>;
-            return _HistoryItem(incident: incident);
+            final doc = documents[index];
+            final data = doc.data() as Map<String, dynamic>;
+            return _HistoryItem(
+              data: data,
+              documentType: documentType,
+            );
           },
         );
       },
@@ -107,50 +145,69 @@ class _StudentHistoryScreenState extends State<StudentHistoryScreen> {
 }
 
 class _HistoryItem extends StatelessWidget {
-  final Map<String, dynamic> incident;
+  final Map<String, dynamic> data;
+  final String documentType;
 
-  const _HistoryItem({required this.incident});
+  const _HistoryItem({
+    required this.data,
+    required this.documentType,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final timestamp = (incident['timestamp'] as Timestamp).toDate();
-    final status = incident['status'] ?? 'pending';
+    final timestamp = data['timestamp'] != null
+        ? (data['timestamp'] as Timestamp).toDate()
+        : DateTime.now();
+    final status = data['status'] ?? 'pending';
 
     return Card(
       margin: EdgeInsets.only(bottom: 12),
+      elevation: 2,
       child: ListTile(
-        leading: Icon(
-          _getTypeIcon(incident['type']),
-          color: _getStatusColor(status),
+        leading: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: _getStatusColor(status).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Icon(
+            _getTypeIcon(documentType, data['type']),
+            color: _getStatusColor(status),
+          ),
         ),
         title: Text(
-          incident['type'] ?? 'SOS',
+          _getTitle(documentType, data),
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (incident['description'] != null)
-              Text(
-                incident['description'],
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(Icons.location_on, size: 12),
-                SizedBox(width: 4),
-                Text(
-                  incident['location'] ?? 'Unknown',
+            if (data['description'] != null && data['description'].toString().isNotEmpty)
+              Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Text(
+                  data['description'],
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 12),
                 ),
-              ],
-            ),
+              ),
+            if (data['location'] != null && data['location'].toString().isNotEmpty)
+              Row(
+                children: [
+                  Icon(Icons.location_on, size: 12, color: Colors.grey),
+                  SizedBox(width: 4),
+                  Text(
+                    data['location'],
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
             SizedBox(height: 4),
             Text(
               DateFormat('MMM dd, yyyy - HH:mm').format(timestamp),
-              style: TextStyle(fontSize: 11, color: Colors.grey),
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
             ),
           ],
         ),
@@ -159,16 +216,29 @@ class _HistoryItem extends StatelessWidget {
     );
   }
 
-  IconData _getTypeIcon(String? type) {
-    switch (type) {
-      case 'SOS':
-        return Icons.warning;
-      case 'Standard SOS':
-        return Icons.emergency;
-      case 'Girls SOS':
-        return Icons.female;
+  String _getTitle(String docType, Map<String, dynamic> data) {
+    switch (docType) {
+      case 'incident':
+        return data['type'] ?? 'SOS Incident';
+      case 'report':
+        return data['title'] ?? 'Report';
+      case 'complaint':
+        return data['type'] ?? 'Complaint';
       default:
-        return Icons.report;
+        return 'Document';
+    }
+  }
+
+  IconData _getTypeIcon(String docType, String? specificType) {
+    switch (docType) {
+      case 'incident':
+        return Icons.warning;
+      case 'report':
+        return Icons.assignment;
+      case 'complaint':
+        return Icons.feedback;
+      default:
+        return Icons.description;
     }
   }
 
@@ -178,8 +248,10 @@ class _HistoryItem extends StatelessWidget {
         return Colors.green;
       case 'acknowledged':
         return Colors.blue;
-      default:
+      case 'pending':
         return Colors.orange;
+      default:
+        return Colors.grey;
     }
   }
 }
